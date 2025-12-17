@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String     @id @default(uuid())
+  email     String     @unique
+  password  String
+  semesters Semester[]
+
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model Semester {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  startDate DateTime
+  endDate   DateTime
+
+  user      User     @relation(fields: [userId], references: [id])
+  courses   Course[]
+
+  createdAt DateTime @default(now())
+}
+
+model Course {
+  id                 String        @id @default(uuid())
+  semesterId         String
+  name               String
+  credits            Int
+  desiredLetterGrade String
+  gradingScaleId     String?
+
+  semester           Semester      @relation(fields: [semesterId], references: [id])
+  gradingScale       GradingScale? @relation(fields: [gradingScaleId], references: [id])
+  categories         GradeCategory[]
+
+  createdAt          DateTime      @default(now())
+}
+
+model GradingScale {
+  id     String @id @default(uuid())
+  name   String
+
+  aMin   Float
+  bMin   Float
+  cMin   Float
+  dMin   Float
+
+  courses Course[]
+}
+
+model GradeCategory {
+  id            String   @id @default(uuid())
+  courseId      String
+  name          String
+  weightPercent Float
+  dropLowest    Int      @default(0)
+
+  course        Course       @relation(fields: [courseId], references: [id])
+  assignments   Assignment[]
+}
+
+model Assignment {
+  id            String   @id @default(uuid())
+  categoryId    String
+  name          String
+  maxPoints     Float
+  dueDate       DateTime?
+  isExtraCredit Boolean  @default(false)
+
+  category      GradeCategory @relation(fields: [categoryId], references: [id])
+  grade         Grade?
+
+  createdAt     DateTime @default(now())
+}
+
+model Grade {
+  id           String   @id @default(uuid())
+  assignmentId String   @unique
+  earnedPoints Float?
+  gradedAt     DateTime?
+
+  assignment   Assignment @relation(fields: [assignmentId], references: [id])
+}
