@@ -11,6 +11,7 @@ model User {
   id        String     @id @default(uuid())
   email     String     @unique
   password  String
+
   semesters Semester[]
 
   createdAt DateTime   @default(now())
@@ -24,10 +25,13 @@ model Semester {
   startDate DateTime
   endDate   DateTime
 
-  user      User     @relation(fields: [userId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   courses   Course[]
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model Course {
@@ -41,12 +45,15 @@ model Course {
   actualPercentGrade Float?
   gradeFinalizedAt   DateTime?
 
-  semester           Semester      @relation(fields: [semesterId], references: [id])
-  gradingScale       GradingScale? @relation(fields: [gradingScaleId], references: [id])
+  semester           Semester      @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  gradingScale       GradingScale? @relation(fields: [gradingScaleId], references: [id], onDelete: SetNull)
   categories         GradeCategory[]
 
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
+
+  @@index([semesterId])
+  @@index([gradingScaleId])
 }
 
 model GradingScale {
@@ -68,13 +75,14 @@ model GradeCategory {
   weightPercent Float
   dropLowest    Int      @default(0)
 
-  course        Course       @relation(fields: [courseId], references: [id])
+  course        Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
   assignments   Assignment[]
 
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-}
 
+  @@index([courseId])
+}
 
 model Assignment {
   id            String   @id @default(uuid())
@@ -83,18 +91,30 @@ model Assignment {
   maxPoints     Float
   dueDate       DateTime?
   isExtraCredit Boolean  @default(false)
+  isGraded      Boolean  @default(false)
 
-  category      GradeCategory @relation(fields: [categoryId], references: [id])
+  category      GradeCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   grade         Grade?
 
   createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([categoryId])
 }
 
 model Grade {
-  id           String   @id @default(uuid())
-  assignmentId String   @unique
-  earnedPoints Float?
-  gradedAt     DateTime?
+  id            String   @id @default(uuid())
+  assignmentId  String   @unique
 
-  assignment   Assignment @relation(fields: [assignmentId], references: [id])
+  expectedPoints Float?
+  earnedPoints   Float?
+  gradedAt       DateTime?
+  notes          String?
+
+  assignment     Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([assignmentId])
 }

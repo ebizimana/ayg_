@@ -1,10 +1,34 @@
+import { IsDateString, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+
 export class UpdateCourseDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
   name?: string;
+
+  @IsOptional()
+  @IsInt()
   credits?: number;
+
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
   desiredLetterGrade?: string;
+
+  @IsOptional()
+  @IsString()
   gradingScaleId?: string | null;
+
+  @IsOptional()
+  @IsString()
   actualLetterGrade?: string | null;
+
+  @IsOptional()
+  @IsNumber()
   actualPercentGrade?: number | null;
+
+  @IsOptional()
+  @IsDateString()
   gradeFinalizedAt?: string | null; // ISO string
 
 }
