@@ -6,9 +6,10 @@ import { HealthController } from './health.controller';
 import { SemestersModule } from './modules/semesters/semesters.module';
 import { CoursesModule } from './modules/courses/courses.module';
 import { CategoriesModule } from './modules/categories/categories.module';
+import { AssignmentsModule } from './modules/assignments/assignments.module';
 
 @Module({
-  imports: [PrismaModule, UsersModule, AuthModule, SemestersModule, CoursesModule, CategoriesModule],
+  imports: [PrismaModule, UsersModule, AuthModule, SemestersModule, CoursesModule, CategoriesModule, AssignmentsModule],
   controllers: [HealthController],
 })
 export class AppModule {}

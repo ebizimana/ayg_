@@ -37,12 +37,16 @@ model Course {
   credits            Int
   desiredLetterGrade String
   gradingScaleId     String?
+  actualLetterGrade  String?
+  actualPercentGrade Float?
+  gradeFinalizedAt   DateTime?
 
   semester           Semester      @relation(fields: [semesterId], references: [id])
   gradingScale       GradingScale? @relation(fields: [gradingScaleId], references: [id])
   categories         GradeCategory[]
 
   createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 }
 
 model GradingScale {
@@ -64,10 +68,13 @@ model GradeCategory {
   weightPercent Float
   dropLowest    Int      @default(0)
 
-  createdAt     DateTime @default(now())
   course        Course       @relation(fields: [courseId], references: [id])
   assignments   Assignment[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
+
 
 model Assignment {
   id            String   @id @default(uuid())

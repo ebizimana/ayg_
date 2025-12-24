@@ -5,7 +5,7 @@ import { UpdateCourseDto } from './dto/update-course.dto';
 
 @Injectable()
 export class CoursesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService) { }
 
   private async assertSemesterOwnership(userId: string, semesterId: string) {
     const semester = await this.prisma.semester.findFirst({
@@ -67,6 +67,12 @@ export class CoursesService {
         ...(dto.credits !== undefined ? { credits: dto.credits } : {}),
         ...(dto.desiredLetterGrade !== undefined ? { desiredLetterGrade: dto.desiredLetterGrade } : {}),
         ...(dto.gradingScaleId !== undefined ? { gradingScaleId: dto.gradingScaleId } : {}),
+        ...(dto.actualLetterGrade !== undefined ? { actualLetterGrade: dto.actualLetterGrade } : {}),
+        ...(dto.actualPercentGrade !== undefined ? { actualPercentGrade: dto.actualPercentGrade } : {}),
+        ...(dto.gradeFinalizedAt !== undefined
+          ? { gradeFinalizedAt: dto.gradeFinalizedAt ? new Date(dto.gradeFinalizedAt) : null }
+          : {}),
+
       },
     });
   }

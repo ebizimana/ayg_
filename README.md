@@ -261,3 +261,212 @@ GitHub: [https://github.com/ebizimana](https://github.com/ebizimana)
 
 TBD (MIT planned)
 
+
+Absolutely — this is a great “zoom-out” moment.
+I’ll give you a **clean, end-to-end phase roadmap**, from where you are **right now** all the way to a “done” product, without fluff.
+
+---
+
+# AYG — Full Project Phases (Backend → Frontend → Launch)
+
+You are currently at **Phase 2, ~40% complete on the backend**.
+
+---
+
+## 🔵 PHASE 1 — Foundation (COMPLETED ✅)
+
+**Status: DONE**
+
+You’ve already shipped this.
+
+* Project setup (NestJS, TypeScript)
+* PostgreSQL (Docker)
+* Prisma ORM
+* Auth (email/password, JWT)
+* User scoping & guards
+* Clean modular architecture
+
+🎉 This phase is often where projects die — you’re past it.
+
+---
+
+## 🔵 PHASE 2 — Academic Data Model (IN PROGRESS 🚧)
+
+**Goal:** Accurately model how school works.
+
+### Already done:
+
+* Semesters
+* Courses
+* Grade Categories (+ weight guardrails)
+
+### Still to build (next):
+
+* Assignments
+* Assignment scores
+* Extra credit handling
+* Drop-lowest logic (category level)
+
+Once this phase is complete, **AYG can represent any syllabus**.
+
+---
+
+## 🔵 PHASE 3 — Grade Engine (CORE INTELLIGENCE 🧠)
+
+**This is the heart of AYG.**
+
+### What the Grade Engine does:
+
+* Calculate current weighted grade
+* Calculate remaining possible points
+* Predict required scores to hit a goal grade
+* Calculate “points left to lose”
+* Support what-if scenarios
+
+### Outputs:
+
+* Current grade %
+* Current letter grade
+* Required average on remaining work
+* Feasibility check (possible / impossible)
+
+This is where AYG becomes **more than a CRUD app**.
+
+---
+
+## 🔵 PHASE 4 — GPA Engine 🎓
+
+**Zoom out from classes to semesters and beyond.**
+
+### Capabilities:
+
+* Semester GPA
+* Cumulative GPA
+* Credit-weighted GPA
+* Future GPA projection
+* “What happens if I get an A/B/C in this class?”
+
+This phase makes AYG *strategic*, not just reactive.
+
+---
+
+## 🔵 PHASE 5 — API Stabilization & Documentation
+
+**Turn a working system into a consumable product.**
+
+* API versioning (`/api/v1`)
+* Error standardization
+* DTO validation (class-validator)
+* OpenAPI / Swagger docs
+* Performance pass (queries & indexes)
+
+At this point:
+
+> Backend is production-ready.
+
+---
+
+## 🔵 PHASE 6 — Frontend (Web App) 🖥️
+
+**Make it usable by real humans.**
+
+### Initial UI:
+
+* Auth screens
+* Dashboard
+* Semester → Course → Category → Assignment flow
+* Visual grade breakdowns
+* Warnings (“You are at risk of missing your goal”)
+
+### Tech (likely):
+
+* React (Next.js or Vite)
+* Tailwind / shadcn
+* Charting (grades & projections)
+
+Backend already supports this cleanly.
+
+---
+
+## 🔵 PHASE 7 — Grade Automation (Advanced 🚀)
+
+**Optional but powerful.**
+
+* Canvas / Blackboard integration
+* Auto-sync assignments
+* Background jobs
+* Notifications
+
+This turns AYG into a **set-and-forget** assistant.
+
+---
+
+## 🔵 PHASE 8 — Mobile App 📱
+
+Only after web is stable.
+
+* React Native / Expo
+* Same backend
+* Push notifications
+
+---
+
+## 🔵 PHASE 9 — Launch & Polish 🏁
+
+**Turn it into a real product.**
+
+* Production deployment
+* Domain + SSL
+* Logging & monitoring
+* User feedback loop
+* Iteration
+
+---
+
+# Visual Summary
+
+```
+[ Auth & DB ] ✅
+      ↓
+[ Academic Models ] 🚧
+      ↓
+[ Grade Engine ] 🧠
+      ↓
+[ GPA Engine ] 🎓
+      ↓
+[ API Hardening ]
+      ↓
+[ Web App ]
+      ↓
+[ Automation ]
+      ↓
+[ Mobile ]
+      ↓
+[ Launch ]
+```
+
+---
+
+## 🧠 Strategic Insight (important)
+
+You are building AYG **in the correct order**:
+
+* Structure first
+* Intelligence second
+* UI last
+
+That’s why everything feels “clicking” instead of fragile.
+
+---
+
+## Tomorrow’s Resume Point
+
+When you wake up, the **correct next step** is:
+
+👉 **Assignments CRUD**
+Then immediately after:
+👉 **First Grade Engine calculation endpoint**
+
+Nothing else should come before that.
+
+Sleep well — you earned it 😴
