@@ -2,6 +2,8 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateCourseDto } from './dto/create-course.dto';
 import { UpdateCourseDto } from './dto/update-course.dto';
+import { computeCoursePlan } from './grade-plan.util';
+import { GradePlanQueryDto } from './dto/grade-plan.dto';
 
 @Injectable()
 export class CoursesService {
@@ -55,6 +57,50 @@ export class CoursesService {
     await this.assertCourseOwnership(userId, courseId);
 
     return this.prisma.course.findUnique({ where: { id: courseId } });
+  }
+
+  async gradePlan(userId: string, courseId: string, query: GradePlanQueryDto) {
+    await this.assertCourseOwnership(userId, courseId);
+
+    const course = await this.prisma.course.findUnique({
+      where: { id: courseId },
+      include: {
+        categories: {
+          include: {
+            assignments: {
+              include: {
+                grade: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!course) throw new NotFoundException('Course not found');
+
+    const planInput = {
+      id: course.id,
+      name: course.name,
+      desiredLetterGrade: (query.desiredGrade ?? 'A') as any,
+      categories: course.categories.map((cat) => ({
+        id: cat.id,
+        name: cat.name,
+        weightPercent: cat.weightPercent,
+        dropLowest: cat.dropLowest,
+        assignments: cat.assignments.map((a) => ({
+          id: a.id,
+          name: a.name,
+          maxPoints: a.maxPoints,
+          isExtraCredit: a.isExtraCredit,
+          isGraded: a.isGraded,
+          earnedPoints: a.grade?.earnedPoints ?? null,
+          expectedPoints: a.grade?.expectedPoints ?? null,
+        })),
+      })),
+    };
+
+    return computeCoursePlan(planInput);
   }
 
   async update(userId: string, courseId: string, dto: UpdateCourseDto) {

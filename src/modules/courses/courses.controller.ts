@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/decorators/current-user.decorator';
 import { CoursesService } from './courses.service';
 import { CreateCourseDto } from './dto/create-course.dto';
 import { UpdateCourseDto } from './dto/update-course.dto';
+import { GradePlanQueryDto } from './dto/grade-plan.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller()
@@ -33,6 +34,15 @@ export class CoursesController {
   @Get('courses/:id')
   findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.coursesService.findOne(user.userId, id);
+  }
+
+  @Get('courses/:id/grade-plan')
+  gradePlan(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Query() query: GradePlanQueryDto,
+  ) {
+    return this.coursesService.gradePlan(user.userId, id, query);
   }
 
   @Patch('courses/:id')

@@ -2,10 +2,22 @@
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { HttpAdapterHost } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { RequestLoggerMiddleware } from './common/middleware/request-logger.middleware';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  app.enableCors({
+    origin: true, // allow all in dev; adjust for prod
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  });
+
+  // Request logging with correlation/request ID
+  app.use(new RequestLoggerMiddleware().use);
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -14,6 +26,10 @@ async function bootstrap() {
       transform: true,          // converts payloads to DTO types
     }),
   );
+
+  // Global exception filter with traceId
+  const httpAdapterHost = app.get(HttpAdapterHost);
+  app.useGlobalFilters(new AllExceptionsFilter(httpAdapterHost));
 
   await app.listen(3000);
 }

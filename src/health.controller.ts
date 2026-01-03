@@ -10,4 +10,15 @@ export class HealthController {
     await this.prisma.$queryRaw`SELECT 1`;
     return { ok: true };
   }
+
+  @Get('liveness')
+  liveness() {
+    return { ok: true };
+  }
+
+  @Get('readiness')
+  async readiness() {
+    await this.prisma.$queryRaw`SELECT 1`;
+    return { ok: true };
+  }
 }

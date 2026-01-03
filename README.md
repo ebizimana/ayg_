@@ -455,18 +455,6 @@ You are building AYG **in the correct order**:
 * Intelligence second
 * UI last
 
-That’s why everything feels “clicking” instead of fragile.
 
----
 
-## Tomorrow’s Resume Point
 
-When you wake up, the **correct next step** is:
-
-👉 **Assignments CRUD**
-Then immediately after:
-👉 **First Grade Engine calculation endpoint**
-
-Nothing else should come before that.
-
-Sleep well — you earned it 😴
