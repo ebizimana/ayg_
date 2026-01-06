@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16
+    container_name: ayg-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ayg
+      POSTGRES_PASSWORD: ayg_password
+      POSTGRES_DB: ayg
+    ports:
+      - "5432:5432"
+    volumes:
+      - ayg_pgdata:/var/lib/postgresql/data
+
+volumes:
+  ayg_pgdata:

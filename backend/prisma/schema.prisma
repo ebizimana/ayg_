@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String     @id @default(uuid())
+  email     String     @unique
+  password  String
+
+  semesters Semester[]
+
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model Semester {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  startDate DateTime
+  endDate   DateTime
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courses   Course[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Course {
+  id                 String        @id @default(uuid())
+  semesterId         String
+  code               String        @default("")
+  name               String
+  credits            Int
+  desiredLetterGrade String
+  gradingScaleId     String?
+  actualLetterGrade  String?
+  actualPercentGrade Float?
+  gradeFinalizedAt   DateTime?
+
+  semester           Semester      @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  gradingScale       GradingScale? @relation(fields: [gradingScaleId], references: [id], onDelete: SetNull)
+  categories         GradeCategory[]
+
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@index([semesterId])
+  @@index([gradingScaleId])
+}
+
+model GradingScale {
+  id     String @id @default(uuid())
+  name   String
+
+  aMin   Float
+  bMin   Float
+  cMin   Float
+  dMin   Float
+
+  courses Course[]
+}
+
+model GradeCategory {
+  id            String   @id @default(uuid())
+  courseId      String
+  name          String
+  weightPercent Float
+  dropLowest    Int      @default(0)
+
+  course        Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  assignments   Assignment[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([courseId])
+}
+
+model Assignment {
+  id            String   @id @default(uuid())
+  categoryId    String
+  name          String
+  maxPoints     Float
+  dueDate       DateTime?
+  isExtraCredit Boolean  @default(false)
+  isGraded      Boolean  @default(false)
+
+  category      GradeCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  grade         Grade?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([categoryId])
+}
+
+model Grade {
+  id            String   @id @default(uuid())
+  assignmentId  String   @unique
+
+  expectedPoints Float?
+  earnedPoints   Float?
+  gradedAt       DateTime?
+  notes          String?
+
+  assignment     Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([assignmentId])
+}
