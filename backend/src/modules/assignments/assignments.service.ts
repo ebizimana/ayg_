@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateAssignmentDto } from './dto/create-assignment.dto';
 import { UpdateAssignmentDto } from './dto/update-assignment.dto';
@@ -45,7 +45,12 @@ export class AssignmentsService {
   }
 
   async create(userId: string, categoryId: string, dto: CreateAssignmentDto) {
-    await this.assertCategoryOwnership(userId, categoryId);
+    const category = await this.assertCategoryOwnership(userId, categoryId);
+    const maxOrder = await this.prisma.assignment.aggregate({
+      where: { category: { courseId: category.courseId } },
+      _max: { sortOrder: true },
+    });
+    const sortOrder = (maxOrder._max.sortOrder ?? 0) + 1;
 
     return this.prisma.assignment.create({
       data: {
@@ -54,6 +59,7 @@ export class AssignmentsService {
         maxPoints: dto.maxPoints,
         dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
         isExtraCredit: dto.isExtraCredit ?? false,
+        sortOrder,
       },
     });
   }
@@ -77,7 +83,20 @@ export class AssignmentsService {
   }
 
   async update(userId: string, assignmentId: string, dto: UpdateAssignmentDto) {
-    await this.assertAssignmentOwnership(userId, assignmentId);
+    const assignment = await this.assertAssignmentOwnership(userId, assignmentId);
+
+    if (dto.categoryId && dto.categoryId !== assignment.categoryId) {
+      const newCategory = await this.assertCategoryOwnership(userId, dto.categoryId);
+      const currentCategory = await this.prisma.gradeCategory.findUnique({
+        where: { id: assignment.categoryId },
+        select: { courseId: true },
+      });
+
+      if (!currentCategory) throw new NotFoundException('Category not found');
+      if (newCategory.courseId !== currentCategory.courseId) {
+        throw new ForbiddenException('Cannot move assignment to a different course');
+      }
+    }
 
     return this.prisma.assignment.update({
       where: { id: assignmentId },
@@ -85,6 +104,7 @@ export class AssignmentsService {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
         ...(dto.maxPoints !== undefined ? { maxPoints: dto.maxPoints } : {}),
         ...(dto.isExtraCredit !== undefined ? { isExtraCredit: dto.isExtraCredit } : {}),
+        ...(dto.categoryId !== undefined ? { categoryId: dto.categoryId } : {}),
         ...(dto.dueDate !== undefined
           ? { dueDate: dto.dueDate ? new Date(dto.dueDate) : null }
           : {}),
@@ -95,5 +115,38 @@ export class AssignmentsService {
   async remove(userId: string, assignmentId: string) {
     await this.assertAssignmentOwnership(userId, assignmentId);
     return this.prisma.assignment.delete({ where: { id: assignmentId } });
+  }
+
+  async updateOrder(userId: string, orderedIds: string[]) {
+    if (!orderedIds.length) return { count: 0 };
+
+    const assignments = await this.prisma.assignment.findMany({
+      where: {
+        id: { in: orderedIds },
+        category: { course: { semester: { userId } } },
+      },
+      select: { id: true, category: { select: { courseId: true } } },
+    });
+
+    if (assignments.length !== orderedIds.length) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const courseIds = new Set(assignments.map((a) => a.category.courseId));
+    if (courseIds.size !== 1) {
+      throw new BadRequestException('Assignments must belong to the same course');
+    }
+
+    const orderMap = new Map(orderedIds.map((id, index) => [id, index + 1]));
+    await this.prisma.$transaction(
+      assignments.map((assignment) =>
+        this.prisma.assignment.update({
+          where: { id: assignment.id },
+          data: { sortOrder: orderMap.get(assignment.id) ?? 0 },
+        }),
+      ),
+    );
+
+    return { count: assignments.length };
   }
 }

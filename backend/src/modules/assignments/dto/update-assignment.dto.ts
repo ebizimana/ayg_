@@ -1,4 +1,4 @@
-import { IsBoolean, IsDateString, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsDateString, IsNotEmpty, IsNumber, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export class UpdateAssignmentDto {
   @IsOptional()
@@ -17,4 +17,8 @@ export class UpdateAssignmentDto {
   @IsOptional()
   @IsBoolean()
   isExtraCredit?: boolean;
+
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string;
 }

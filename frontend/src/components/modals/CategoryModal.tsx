@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -43,15 +43,21 @@ export function CategoryModal({
   initialData,
   onDelete,
 }: CategoryModalProps) {
+  const emptyForm: CategoryFormData = {
+    name: "",
+    weight: 0,
+    dropLowest: false,
+    dropCount: 1,
+  };
   const [formData, setFormData] = useState<CategoryFormData>(
-    initialData || {
-      name: "",
-      weight: 0,
-      dropLowest: false,
-      dropCount: 1,
-    }
+    initialData || emptyForm
   );
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setFormData(initialData || emptyForm);
+  }, [open, initialData]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -14,8 +14,8 @@ export class GradesService {
   constructor(private readonly prisma: PrismaService) {}
 
   private isGradedFlag(grade: { expectedPoints?: number | null; earnedPoints?: number | null; gradedAt?: Date | null }) {
-    const { expectedPoints, earnedPoints, gradedAt } = grade;
-    return [expectedPoints, earnedPoints, gradedAt].some((v) => v !== null && v !== undefined);
+    const { earnedPoints, gradedAt } = grade;
+    return [earnedPoints, gradedAt].some((v) => v !== null && v !== undefined);
   }
 
   private async getOwnedAssignmentOrThrow(assignmentId: string, userId: string) {

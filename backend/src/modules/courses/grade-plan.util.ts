@@ -52,8 +52,8 @@ export function computeCoursePlan(input: CoursePlanInput): CoursePlanResult {
   for (const category of input.categories) {
     const weight = Math.max(category.weightPercent, 0) / totalWeight;
 
-    const graded = category.assignments.filter((a) => a.isGraded && a.earnedPoints !== null);
-    const ungraded = category.assignments.filter((a) => !a.isGraded);
+    const graded = category.assignments.filter((a) => a.earnedPoints !== null);
+    const ungraded = category.assignments.filter((a) => a.earnedPoints === null);
 
     // Actual percent (graded only, apply drops on graded)
     const gradedScores: ScoredAssignment[] = graded.map((a) => ({
@@ -74,7 +74,7 @@ export function computeCoursePlan(input: CoursePlanInput): CoursePlanResult {
       name: a.name,
       maxPoints: a.maxPoints,
       isExtraCredit: a.isExtraCredit,
-      score: a.isGraded
+      score: a.earnedPoints !== null
         ? (a.earnedPoints ?? 0)
         : (a.expectedPoints ?? a.maxPoints), // optimistic default for projection
     }));
@@ -85,7 +85,7 @@ export function computeCoursePlan(input: CoursePlanInput): CoursePlanResult {
 
     // Requirements for remaining assignments in this category to hit targetPercent within the kept set
     const keptIds = new Set(projectedDrop.kept.map((a) => a.id));
-    const remaining = category.assignments.filter((a) => !a.isGraded && keptIds.has(a.id));
+    const remaining = category.assignments.filter((a) => a.earnedPoints === null && keptIds.has(a.id));
     const keptMax = projectedDrop.kept.reduce((s, a) => s + a.maxPoints, 0);
     const earnedForReq = projectedDrop.kept
       .filter((a) => graded.some((g) => g.id === a.id))
@@ -103,7 +103,7 @@ export function computeCoursePlan(input: CoursePlanInput): CoursePlanResult {
       const scale = remainingMax > 0 ? neededPoints / remainingMax : 0;
       for (const a of remaining) {
         const req = Math.min(a.maxPoints, a.maxPoints * scale);
-        requirements.push({ id: a.id, name: a.name, maxPoints: a.maxPoints, requiredPoints: Number(req.toFixed(2)) });
+        requirements.push({ id: a.id, name: a.name, maxPoints: a.maxPoints, requiredPoints: Math.round(req) });
       }
     } else if (neededPoints > 0) {
       achievable = false;

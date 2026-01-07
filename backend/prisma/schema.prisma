@@ -93,6 +93,7 @@ model Assignment {
   dueDate       DateTime?
   isExtraCredit Boolean  @default(false)
   isGraded      Boolean  @default(false)
+  sortOrder     Int      @default(0)
 
   category      GradeCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   grade         Grade?
