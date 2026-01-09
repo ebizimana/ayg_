@@ -34,10 +34,10 @@ export class GradesService {
   private validateAgainstMaxPoints(
     maxPoints: number,
     isExtraCredit: boolean,
-    expectedPoints?: number,
-    earnedPoints?: number,
+    expectedPoints?: number | null,
+    earnedPoints?: number | null,
   ) {
-    const check = (label: string, v?: number) => {
+    const check = (label: string, v?: number | null) => {
       if (v === undefined || v === null) return;
       if (v < 0) throw new BadRequestException(`${label} cannot be negative`);
       if (!isExtraCredit && v > maxPoints) {

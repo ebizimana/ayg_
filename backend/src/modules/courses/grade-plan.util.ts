@@ -19,6 +19,7 @@ type ScoredAssignment = {
   maxPoints: number;
   isExtraCredit: boolean;
   score: number;
+  dropEligible?: boolean;
 };
 
 function applyDrops(assignments: ScoredAssignment[], dropLowest: number): DropResult<ScoredAssignment> {
@@ -26,9 +27,16 @@ function applyDrops(assignments: ScoredAssignment[], dropLowest: number): DropRe
     return { kept: assignments, dropped: [] };
   }
 
-  const sorted = [...assignments].sort((a, b) => a.score / a.maxPoints - b.score / b.maxPoints);
-  const dropped = sorted.slice(0, dropLowest);
-  const kept = sorted.slice(dropLowest);
+  const eligible = assignments.filter((a) => a.dropEligible !== false);
+  if (eligible.length === 0) {
+    return { kept: assignments, dropped: [] };
+  }
+
+  const sortedEligible = [...eligible].sort((a, b) => a.score / a.maxPoints - b.score / b.maxPoints);
+  const droppedEligible = sortedEligible.slice(0, dropLowest);
+  const droppedIds = new Set(droppedEligible.map((a) => a.id));
+  const kept = assignments.filter((a) => !droppedIds.has(a.id));
+  const dropped = assignments.filter((a) => droppedIds.has(a.id));
   return { kept, dropped };
 }
 
@@ -77,6 +85,7 @@ export function computeCoursePlan(input: CoursePlanInput): CoursePlanResult {
       score: a.earnedPoints !== null
         ? (a.earnedPoints ?? 0)
         : (a.expectedPoints ?? a.maxPoints), // optimistic default for projection
+      dropEligible: a.earnedPoints !== null || a.expectedPoints !== null,
     }));
     const projectedDrop = applyDrops(projectedAssignments, category.dropLowest);
     const projectedEarned = projectedDrop.kept.reduce((s, a) => s + clampEarned(a), 0);

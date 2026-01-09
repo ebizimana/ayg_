@@ -57,8 +57,8 @@ describe('computeCoursePlan', () => {
     const input = baseCourse();
     input.categories[0].dropLowest = 1;
     input.categories[0].assignments = [
-      { id: 'a1', name: 'A1', maxPoints: 50, isExtraCredit: false, isGraded: false, earnedPoints: null, expectedPoints: null },
-      { id: 'a2', name: 'A2', maxPoints: 100, isExtraCredit: false, isGraded: false, earnedPoints: null, expectedPoints: null },
+      { id: 'a1', name: 'A1', maxPoints: 50, isExtraCredit: false, isGraded: false, earnedPoints: null, expectedPoints: 40 },
+      { id: 'a2', name: 'A2', maxPoints: 100, isExtraCredit: false, isGraded: false, earnedPoints: null, expectedPoints: 100 },
     ];
 
     const result = computeCoursePlan(input);
