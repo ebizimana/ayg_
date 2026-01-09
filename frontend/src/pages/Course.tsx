@@ -54,6 +54,7 @@ type Assignment = {
   name: string;
   earned?: number;
   expected?: number;
+  isDropped?: boolean;
   max: number;
   categoryId?: string;
   isExtraCredit: boolean;
@@ -85,6 +86,7 @@ type GradePlan = {
   actualPercent: number | null;
   projectedPercent: number | null;
   requirements: { id: string; requiredPoints: number }[];
+  droppedAssignmentIds: string[];
 };
 
 const gradeTargets: Record<string, number> = {
@@ -186,6 +188,7 @@ export default function CoursePage() {
           categoryId: a.categoryId,
           earned: a.grade?.earnedPoints ?? undefined,
           expected: a.grade?.earnedPoints != null ? undefined : a.grade?.expectedPoints ?? undefined,
+          isDropped: false,
           isExtraCredit: a.isExtraCredit ?? false,
           sortOrder: a.sortOrder ?? 0,
         }))
@@ -195,14 +198,14 @@ export default function CoursePage() {
       // load grade plan for current target to hydrate expected for remaining
       const plan = await http<GradePlan>(`/courses/${courseId}/grade-plan?desiredGrade=${selectedGrade}`);
       setActualPercent(plan.actualPercent);
-      if (plan.requirements?.length) {
-        setAssignments((prev) =>
-          prev.map((a) => {
-            const req = plan.requirements.find((r) => r.id === a.id);
-            return req && a.earned === undefined ? { ...a, expected: req.requiredPoints } : a;
-          }),
-        );
-      }
+      setAssignments((prev) =>
+        prev.map((a) => {
+          const req = plan.requirements?.find((r) => r.id === a.id);
+          const isDropped = plan.droppedAssignmentIds?.includes(a.id) ?? false;
+          if (a.earned !== undefined) return { ...a, isDropped };
+          return { ...a, expected: req ? req.requiredPoints : undefined, isDropped };
+        }),
+      );
     } catch (err) {
       console.error(err);
       toast({
@@ -229,7 +232,7 @@ export default function CoursePage() {
     [assignments],
   );
   const gradedCount = assignments.filter((a) => a.earned !== undefined).length;
-  const currentPercent = totalMax === 0 ? 0 : Math.round((earnedPoints / totalMax) * 100);
+  const currentPercent = gradedMaxPoints === 0 ? 0 : Math.round((earnedPoints / gradedMaxPoints) * 100);
   const actualPercentValue = actualPercent !== null ? Math.round(actualPercent * 100) : currentPercent;
   const actualLetter = useMemo(() => {
     if (actualPercentValue >= gradeTargets.A) return "A";
@@ -239,6 +242,16 @@ export default function CoursePage() {
     return "F";
   }, [actualPercentValue]);
   const heroLetter = assignments.length === 0 || gradedCount === 0 ? "A" : actualLetter;
+  const currentGradeLetter = gradedCount === 0 ? "-" : actualLetter;
+  const currentGradeBadge = gradedCount === 0 ? "A" : actualLetter;
+  const currentGradePercent =
+    gradedCount === 0 ? "-" : `${actualPercent !== null ? Math.round(actualPercent * 100) : currentPercent}%`;
+  const gradedAvgPercent = useMemo(() => {
+    const graded = assignments.filter((a) => a.earned !== undefined && a.max > 0);
+    if (graded.length === 0) return null;
+    const avg = graded.reduce((sum, a) => sum + a.earned! / a.max, 0) / graded.length;
+    return Math.max(0, Math.min(1, avg));
+  }, [assignments]);
 
   const pointsLeftToLose = useMemo(() => {
     const target = gradeTargets[selectedGrade] ?? 90;
@@ -271,7 +284,7 @@ export default function CoursePage() {
   const targetMet = neededPoints <= 0;
 
   const riskLevel =
-    pointsLeftToLose < 10 ? "danger" : pointsLeftToLose < 20 ? "caution" : "safe";
+    pointsLeftToLose < 10 ? "danger" : pointsLeftToLose < 50 ? "caution" : "safe";
   const riskLabel = riskLevel === "safe" ? "Safe" : riskLevel === "caution" ? "Caution" : "Danger";
 
   const categoryNameFor = (categoryId?: string) => categories.find((c) => c.id === categoryId)?.name ?? "—";
@@ -409,14 +422,14 @@ export default function CoursePage() {
     try {
       const plan = await http<GradePlan>(`/courses/${courseId}/grade-plan?desiredGrade=${selectedGrade}`);
       setActualPercent(plan.actualPercent);
-      if (plan.requirements?.length) {
-        setAssignments((prev) =>
-          prev.map((a) => {
-            const req = plan.requirements.find((r) => r.id === a.id);
-            return req && a.earned === undefined ? { ...a, expected: req.requiredPoints } : a;
-          }),
-        );
-      }
+      setAssignments((prev) =>
+        prev.map((a) => {
+          const req = plan.requirements?.find((r) => r.id === a.id);
+          const isDropped = plan.droppedAssignmentIds?.includes(a.id) ?? false;
+          if (a.earned !== undefined) return { ...a, isDropped };
+          return { ...a, expected: req ? req.requiredPoints : undefined, isDropped };
+        }),
+      );
       setLastRun(`Simulation updated for ${selectedGrade} target.`);
       toast({ title: "Simulation ran", description: `Target grade: ${selectedGrade}` });
     } catch (err) {
@@ -599,7 +612,8 @@ export default function CoursePage() {
       </header>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-2xl border border-slate-200 bg-white/80 shadow-md backdrop-blur">
+        <div className="sticky top-16 z-30">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-2xl border border-slate-200 bg-white/90 shadow-md backdrop-blur">
           <div className="flex items-center gap-4 px-5 py-4">
             <div
               className={`h-12 w-12 rounded-xl bg-gradient-to-br text-white font-bold grid place-items-center shadow-lg ${gradeBadgeClasses[heroLetter] ?? "from-primary to-primary-dark"}`}
@@ -673,6 +687,7 @@ export default function CoursePage() {
             </Button>
           </div>
         </div>
+        </div>
 
         {categories.length === 0 ? (
           <Card className="bg-muted/30 border-dashed">
@@ -689,11 +704,19 @@ export default function CoursePage() {
           <Card className="border-slate-200 shadow-lg">
             <CardHeader className="pb-3 flex flex-row items-center justify-center">
               <div className="flex items-center gap-2">
-                <Button variant="outline" className="gap-2" onClick={() => nav(`/courses/${courseId}/categories`)}>
+                <Button
+                  variant="outline"
+                  className="gap-2 bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200 hover:text-slate-800"
+                  onClick={() => nav(`/courses/${courseId}/categories`)}
+                >
                   <Pencil className="h-4 w-4" />
                   Manage categories
                 </Button>
-                <Button variant="outline" className="gap-2" onClick={openCreate} disabled={loading || !categories.length}>
+                <Button
+                  className="gap-2 bg-success text-white hover:bg-success/90"
+                  onClick={openCreate}
+                  disabled={loading || !categories.length}
+                >
                   <Plus className="h-4 w-4" />
                   Add assignment
                 </Button>
@@ -750,11 +773,16 @@ export default function CoursePage() {
                     </div>
                     <div className="col-span-4 px-4 py-3">
                       <button
-                        className="text-left font-semibold text-foreground hover:text-primary transition-colors"
+                        className={`text-left font-semibold transition-colors ${assignment.isDropped ? "text-muted-foreground" : "text-foreground hover:text-primary"}`}
                         onClick={() => openEditor(assignment)}
                       >
                         <span className="flex items-center gap-2">
-                          {assignment.name}
+                          <span className={assignment.isDropped ? "line-through" : undefined}>{assignment.name}</span>
+                          {assignment.isDropped && (
+                            <Badge className="rounded-full bg-destructive/15 text-destructive border-destructive/40 px-2 py-0.5 text-[10px]">
+                              Dropped
+                            </Badge>
+                          )}
                           {assignment.isExtraCredit && (
                             <Badge className="rounded-full bg-success/20 text-success border-success/30 px-2 py-0.5 text-[10px]">
                               EC
@@ -763,13 +791,25 @@ export default function CoursePage() {
                         </span>
                       </button>
                     </div>
-                    <div className="col-span-3 px-4 py-3 text-muted-foreground">
+                    <div
+                      className={`col-span-3 px-4 py-3 ${
+                        assignment.isDropped ? "text-muted-foreground/60 line-through" : "text-muted-foreground"
+                      }`}
+                    >
                       {assignment.earned === undefined ? "—" : formatScore(assignment.earned, assignment.max)}
                     </div>
-                    <div className="col-span-2 px-4 py-3 text-primary font-semibold">
+                    <div
+                      className={`col-span-2 px-4 py-3 font-semibold ${
+                        assignment.isDropped ? "text-muted-foreground/60" : "text-primary"
+                      }`}
+                    >
                       {assignment.expected === undefined ? "—" : formatScore(assignment.expected, assignment.max)}
                     </div>
-                    <div className="col-span-2 px-4 py-3 text-muted-foreground font-semibold">
+                    <div
+                      className={`col-span-2 px-4 py-3 font-semibold ${
+                        assignment.isDropped ? "text-muted-foreground/60" : "text-muted-foreground"
+                      }`}
+                    >
                       {categoryNameFor(assignment.categoryId)}
                     </div>
                   </div>
@@ -787,13 +827,13 @@ export default function CoursePage() {
           <CardContent className="space-y-3">
             <div className="flex items-center justify-center gap-3 text-center">
               <div
-                className={`h-12 w-12 rounded-full bg-gradient-to-br text-white font-bold grid place-items-center shadow-lg ${gradeBadgeClasses[actualLetter] ?? ""}`}
+                className={`h-12 w-12 rounded-full bg-gradient-to-br text-white font-bold grid place-items-center shadow-lg ${gradeBadgeClasses[currentGradeBadge] ?? ""}`}
               >
-                {actualLetter}
+                {currentGradeLetter}
               </div>
               <div>
                 <p className="text-4xl font-bold text-foreground leading-none">
-                  {actualPercent !== null ? Math.round(actualPercent * 100) : currentPercent}%
+                  {currentGradePercent}
                 </p>
               </div>
             </div>
@@ -886,7 +926,13 @@ export default function CoursePage() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Needed avg on remaining</span>
+                  <span className="text-muted-foreground">Avg on graded</span>
+                  <span className="font-semibold text-foreground">
+                    {gradedAvgPercent === null ? "—" : `${Math.round(gradedAvgPercent * 100)}%`}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Needed avg per assignment</span>
                   <span className="font-semibold text-foreground">
                     {neededAvgOnRemaining === null
                       ? "—"

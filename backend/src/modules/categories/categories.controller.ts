@@ -5,6 +5,7 @@ import type { AuthUser } from '../../common/decorators/current-user.decorator';
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
+import { UpdateCategoryOrderDto } from './dto/update-category-order.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller()
@@ -30,6 +31,11 @@ export class CategoriesController {
   @Get('categories/:id')
   findOne(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.categoriesService.findOne(user.userId, id);
+  }
+
+  @Patch('categories/reorder')
+  updateOrder(@CurrentUser() user: AuthUser, @Body() dto: UpdateCategoryOrderDto) {
+    return this.categoriesService.updateOrder(user.userId, dto.orderedIds);
   }
 
   @Patch('categories/:id')

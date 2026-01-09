@@ -50,4 +50,5 @@ export type CoursePlanResult = {
   remainingWeight: number;
   categories: CategoryPlan[];
   requirements: AssignmentRequirement[];
+  droppedAssignmentIds: string[];
 };

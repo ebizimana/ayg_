@@ -7,10 +7,29 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { CategoryModal, type CategoryFormData } from "@/components/modals";
 import { useToast } from "@/hooks/use-toast";
 import { http } from "@/lib/http";
-import { Bell, ChevronDown, GraduationCap, LogOut, Plus, Settings, User } from "lucide-react";
+import { Bell, ChevronDown, GraduationCap, GripVertical, LogOut, Plus, Settings, User } from "lucide-react";
 
-type Category = { id: string; name: string; weightPercent: number; dropLowest?: number; assignmentsCount?: number };
+type Category = {
+  id: string;
+  name: string;
+  weightPercent: number;
+  dropLowest?: number;
+  assignmentsCount?: number;
+  sortOrder: number;
+};
 type CourseResponse = { name?: string };
+type GradePlan = {
+  categories: { id: string; weight: number; actualPercent: number | null }[];
+};
+type CategoryMetrics = {
+  id: string;
+  name: string;
+  weightPercent: number;
+  actualPercent: number | null;
+  contributionPercent: number | null;
+  gradedCount: number;
+  totalCount: number;
+};
 
 export default function CourseCategories() {
   const { courseId } = useParams<{ courseId: string }>();
@@ -23,16 +42,19 @@ export default function CourseCategories() {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [confirmDeleteCategory, setConfirmDeleteCategory] = useState<Category | null>(null);
   const [loading, setLoading] = useState(false);
-  const [sortBy, setSortBy] = useState<"name" | "weight" | "count">("name");
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<"name" | "weight" | "count" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [metrics, setMetrics] = useState<CategoryMetrics[]>([]);
 
   const loadData = useCallback(async () => {
     if (!courseId) return;
     setLoading(true);
     try {
-      const [course, cats] = await Promise.all([
+      const [course, cats, plan] = await Promise.all([
         http<CourseResponse>(`/courses/${courseId}`),
         http<any[]>(`/courses/${courseId}/categories`),
+        http<GradePlan>(`/courses/${courseId}/grade-plan`),
       ]);
       if (course?.name) setCourseName(course.name);
       const mapped: Category[] =
@@ -42,8 +64,34 @@ export default function CourseCategories() {
           weightPercent: c.weightPercent,
           dropLowest: c.dropLowest,
           assignmentsCount: c._count?.assignments ?? 0,
+          sortOrder: c.sortOrder ?? 0,
         })) ?? [];
       setCategories(mapped);
+
+      const assignmentsByCategory = await Promise.all(
+        (cats ?? []).map((cat: any) => http<any[]>(`/categories/${cat.id}/assignments`)),
+      );
+      const gradedCounts = assignmentsByCategory.map((list) =>
+        list.filter((a) => a.grade?.earnedPoints != null || a.grade?.gradedAt != null).length,
+      );
+      const totalCounts = assignmentsByCategory.map((list) => list.length);
+      const planMap = new Map(plan.categories?.map((c) => [c.id, c]) ?? []);
+      const nextMetrics: CategoryMetrics[] = mapped.map((cat, index) => {
+        const planCat = planMap.get(cat.id);
+        const actualPercent = planCat?.actualPercent ?? null;
+        const contributionPercent =
+          actualPercent !== null ? actualPercent * cat.weightPercent : null;
+        return {
+          id: cat.id,
+          name: cat.name,
+          weightPercent: cat.weightPercent,
+          actualPercent,
+          contributionPercent,
+          gradedCount: gradedCounts[index] ?? 0,
+          totalCount: totalCounts[index] ?? 0,
+        };
+      });
+      setMetrics(nextMetrics);
     } catch (err) {
       toast({
         title: "Failed to load categories",
@@ -69,6 +117,9 @@ export default function CourseCategories() {
 
   const sortedCategories = useMemo(() => {
     const list = [...categories];
+    if (!sortBy) {
+      return list.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    }
     const dir = sortDir === "asc" ? 1 : -1;
     list.sort((a, b) => {
       if (sortBy === "name") return a.name.localeCompare(b.name) * dir;
@@ -78,12 +129,57 @@ export default function CourseCategories() {
     return list;
   }, [categories, counts, sortBy, sortDir]);
 
+  const totalWeight = useMemo(
+    () => categories.reduce((sum, c) => sum + (c.weightPercent ?? 0), 0),
+    [categories],
+  );
+  const totalAssignments = useMemo(
+    () => metrics.reduce((sum, m) => sum + m.totalCount, 0),
+    [metrics],
+  );
+  const metricsMap = useMemo(() => new Map(metrics.map((m) => [m.id, m])), [metrics]);
+
   const toggleSort = (col: "name" | "weight" | "count") => {
     if (sortBy === col) setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
     else {
       setSortBy(col);
       setSortDir("asc");
     }
+  };
+  const persistCategoryOrder = async (ordered: Category[]) => {
+    try {
+      await http(`/categories/reorder`, {
+        method: "PATCH",
+        body: JSON.stringify({ orderedIds: ordered.map((c) => c.id) }),
+      });
+    } catch (err) {
+      toast({
+        title: "Failed to save order",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDrop = (targetId: string) => {
+    if (!draggingId || draggingId === targetId) {
+      setDraggingId(null);
+      return;
+    }
+    const list = [...categories];
+    const fromIndex = list.findIndex((c) => c.id === draggingId);
+    const toIndex = list.findIndex((c) => c.id === targetId);
+    if (fromIndex === -1 || toIndex === -1) {
+      setDraggingId(null);
+      return;
+    }
+    const [item] = list.splice(fromIndex, 1);
+    list.splice(toIndex, 0, item);
+    const ordered = list.map((category, index) => ({ ...category, sortOrder: index + 1 }));
+    setCategories(ordered);
+    setSortBy(null);
+    void persistCategoryOrder(ordered);
+    setDraggingId(null);
   };
 
   const openAdd = () => {
@@ -206,29 +302,57 @@ export default function CourseCategories() {
       </header>
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-2xl border border-slate-200 bg-white/90 shadow-md backdrop-blur px-5 py-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.15em] text-primary font-semibold">Course</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-foreground">{courseName}</h1>
+            </div>
+            <p className="text-sm text-muted-foreground">Edit category weights and drop rules for this course.</p>
+          </div>
+          <Button variant="outline" className="gap-2" onClick={() => nav(`/courses/${courseId}`)}>
+            Back to course
+          </Button>
+        </div>
         <Card className="border-slate-200 shadow-lg">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-xl">Manage categories</CardTitle>
-            <Button variant="outline" className="gap-2" onClick={openAdd}>
+            <Button className="gap-2 bg-success text-white hover:bg-success/90" onClick={openAdd}>
               <Plus className="h-4 w-4" />
               Add category
             </Button>
           </CardHeader>
           <CardContent className="overflow-hidden">
-            <div className="grid grid-cols-3 bg-slate-50 text-sm font-semibold text-slate-600 rounded-t-lg border border-slate-200">
+            <div className="grid grid-cols-[48px_1fr_100px_120px_140px_120px_120px] bg-slate-50 text-sm font-semibold text-slate-600 rounded-t-lg border border-slate-200">
+              <div className="px-4 py-3 flex items-center">
+                <span className="sr-only">Drag</span>
+              </div>
               <button className="px-4 py-3 text-left flex items-center gap-1 hover:text-primary" onClick={() => toggleSort("name")}>
                 Name {sortBy === "name" && <ChevronDown className={`h-4 w-4 ${sortDir === "asc" ? "-rotate-180" : ""}`} />}
               </button>
               <button className="px-4 py-3 text-left flex items-center gap-1 hover:text-primary" onClick={() => toggleSort("weight")}>
                 Weight {sortBy === "weight" && <ChevronDown className={`h-4 w-4 ${sortDir === "asc" ? "-rotate-180" : ""}`} />}
               </button>
+              <div className="px-4 py-3 text-right">Contribution</div>
+              <div className="px-4 py-3 text-right">Category %</div>
+              <div className="px-4 py-3 text-right">Graded</div>
               <button className="px-4 py-3 text-right flex items-center gap-1 justify-end hover:text-primary" onClick={() => toggleSort("count")}>
-                Assignments {sortBy === "count" && <ChevronDown className={`h-4 w-4 ${sortDir === "asc" ? "-rotate-180" : ""}`} />}
+                Total {sortBy === "count" && <ChevronDown className={`h-4 w-4 ${sortDir === "asc" ? "-rotate-180" : ""}`} />}
               </button>
             </div>
             <div className="divide-y divide-slate-200 border border-t-0 border-slate-200 rounded-b-lg">
               {sortedCategories.map((cat) => (
-                <div key={cat.id} className="grid grid-cols-3 items-center bg-white hover:bg-slate-50 transition-colors">
+                <div
+                  key={cat.id}
+                  className={`grid grid-cols-[48px_1fr_100px_120px_140px_120px_120px] items-center bg-white hover:bg-slate-50 transition-colors ${draggingId === cat.id ? "opacity-75" : ""}`}
+                  draggable
+                  onDragStart={() => setDraggingId(cat.id)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => handleDrop(cat.id)}
+                >
+                  <div className="px-4 py-3 flex items-center text-slate-400">
+                    <GripVertical className="h-5 w-5" />
+                  </div>
                   <button
                     className="px-4 py-3 text-left font-semibold text-foreground hover:text-primary"
                     onClick={() => openEdit(cat)}
@@ -236,12 +360,57 @@ export default function CourseCategories() {
                     {cat.name}
                   </button>
                   <div className="px-4 py-3 text-muted-foreground">{cat.weightPercent}%</div>
+                  <div className="px-4 py-3 text-right text-muted-foreground">
+                    {metricsMap.get(cat.id)?.contributionPercent === null || metricsMap.get(cat.id)?.contributionPercent === undefined
+                      ? "—"
+                      : `${metricsMap.get(cat.id)?.contributionPercent?.toFixed(1)}%`}
+                  </div>
+                  <div className="px-4 py-3 text-right text-muted-foreground">
+                    {metricsMap.get(cat.id)?.actualPercent === null || metricsMap.get(cat.id)?.actualPercent === undefined
+                      ? "—"
+                      : `${Math.round((metricsMap.get(cat.id)?.actualPercent ?? 0) * 100)}%`}
+                  </div>
+                  <div className="px-4 py-3 text-right text-muted-foreground">
+                    {metricsMap.get(cat.id)?.gradedCount ?? 0}
+                  </div>
                   <div className="px-4 py-3 text-right font-semibold">{counts[cat.id] ?? 0}</div>
                 </div>
               ))}
               {categories.length === 0 && (
-                <div className="px-4 py-3 text-sm text-muted-foreground">No categories yet.</div>
+                <div className="px-4 py-3 text-sm text-muted-foreground col-span-7">No categories yet.</div>
               )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-slate-200 shadow-md bg-white/90">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Category summary</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-[auto_1fr_1fr] sm:items-center">
+            <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+              <div
+                className="flex h-24 w-24 items-center justify-center rounded-full"
+                style={{
+                  background: `conic-gradient(#10b981 ${Math.min(100, Math.round(totalWeight))}%, #e2e8f0 0)`,
+                }}
+              >
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-lg font-bold text-foreground">
+                  {Math.round(totalWeight)}%
+                </div>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total category weight</p>
+                <p className="text-xs text-muted-foreground">Target is 100%</p>
+              </div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-center">
+              <p className="text-sm text-muted-foreground">Total Categories</p>
+              <p className="text-2xl font-bold text-foreground">{categories.length}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-right">
+              <p className="text-sm text-muted-foreground">Total Assignments</p>
+              <p className="text-2xl font-bold text-foreground">{totalAssignments}</p>
             </div>
           </CardContent>
         </Card>

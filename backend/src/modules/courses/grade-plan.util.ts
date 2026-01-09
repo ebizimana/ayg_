@@ -32,7 +32,11 @@ function applyDrops(assignments: ScoredAssignment[], dropLowest: number): DropRe
     return { kept: assignments, dropped: [] };
   }
 
-  const sortedEligible = [...eligible].sort((a, b) => a.score / a.maxPoints - b.score / b.maxPoints);
+  const sortedEligible = [...eligible].sort((a, b) => {
+    const ratioDiff = a.score / a.maxPoints - b.score / b.maxPoints;
+    if (ratioDiff !== 0) return ratioDiff;
+    return a.maxPoints - b.maxPoints;
+  });
   const droppedEligible = sortedEligible.slice(0, dropLowest);
   const droppedIds = new Set(droppedEligible.map((a) => a.id));
   const kept = assignments.filter((a) => !droppedIds.has(a.id));
@@ -53,6 +57,7 @@ export function computeCoursePlan(input: CoursePlanInput): CoursePlanResult {
   let reason: string | undefined;
   const categoryPlans: CategoryPlan[] = [];
   const requirements: AssignmentRequirement[] = [];
+  const droppedAssignmentIds: string[] = [];
   let weightedActual = 0;
   let weightedProjected = 0;
   let coveredWeight = 0;
@@ -88,13 +93,14 @@ export function computeCoursePlan(input: CoursePlanInput): CoursePlanResult {
       dropEligible: a.earnedPoints !== null || a.expectedPoints !== null,
     }));
     const projectedDrop = applyDrops(projectedAssignments, category.dropLowest);
+    droppedAssignmentIds.push(...projectedDrop.dropped.map((a) => a.id));
     const projectedEarned = projectedDrop.kept.reduce((s, a) => s + clampEarned(a), 0);
     const projectedMax = projectedDrop.kept.reduce((s, a) => s + a.maxPoints, 0);
     const projectedPercent = projectedMax > 0 ? projectedEarned / projectedMax : null;
 
     // Requirements for remaining assignments in this category to hit targetPercent within the kept set
-    const keptIds = new Set(projectedDrop.kept.map((a) => a.id));
-    const remaining = category.assignments.filter((a) => a.earnedPoints === null && keptIds.has(a.id));
+    // Distribute across all remaining assignments so every upcoming item shows a requirement.
+    const remaining = category.assignments.filter((a) => a.earnedPoints === null);
     const keptMax = projectedDrop.kept.reduce((s, a) => s + a.maxPoints, 0);
     const earnedForReq = projectedDrop.kept
       .filter((a) => graded.some((g) => g.id === a.id))
@@ -151,5 +157,6 @@ export function computeCoursePlan(input: CoursePlanInput): CoursePlanResult {
     remainingWeight,
     categories: categoryPlans,
     requirements,
+    droppedAssignmentIds,
   };
 }

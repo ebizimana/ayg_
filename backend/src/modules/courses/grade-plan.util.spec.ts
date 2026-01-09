@@ -62,8 +62,23 @@ describe('computeCoursePlan', () => {
     ];
 
     const result = computeCoursePlan(input);
-    // With one drop, only one assignment needs 90% of 100
-    expect(result.requirements).toHaveLength(1);
-    expect(result.requirements[0].requiredPoints).toBeCloseTo(90, 2);
+    // Requirements distribute across all remaining assignments.
+    expect(result.requirements).toHaveLength(2);
+    const reqs = result.requirements.reduce((map, r) => ({ ...map, [r.id]: r.requiredPoints }), {} as Record<string, number>);
+    expect(reqs.a1).toBeGreaterThan(0);
+    expect(reqs.a2).toBeGreaterThan(0);
+    expect(result.droppedAssignmentIds).toHaveLength(1);
+  });
+
+  it('drops smaller maxPoints first when percentages tie', () => {
+    const input = baseCourse();
+    input.categories[0].dropLowest = 1;
+    input.categories[0].assignments = [
+      { id: 'a1', name: 'A1', maxPoints: 45, isExtraCredit: false, isGraded: true, earnedPoints: 45, expectedPoints: null },
+      { id: 'a2', name: 'A2', maxPoints: 50, isExtraCredit: false, isGraded: true, earnedPoints: 50, expectedPoints: null },
+    ];
+
+    const result = computeCoursePlan(input);
+    expect(result.droppedAssignmentIds).toEqual(['a1']);
   });
 });

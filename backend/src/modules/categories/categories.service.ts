@@ -48,27 +48,34 @@ export class CategoriesService {
       );
     }
 
+    const maxOrder = await this.prisma.gradeCategory.aggregate({
+      where: { courseId },
+      _max: { sortOrder: true },
+    });
+    const sortOrder = (maxOrder._max.sortOrder ?? 0) + 1;
+
     return this.prisma.gradeCategory.create({
       data: {
         courseId,
         name: dto.name,
         weightPercent: dto.weightPercent,
         dropLowest: dto.dropLowest ?? 0,
+        sortOrder,
       },
     });
   }
 
-async findAllForCourse(userId: string, courseId: string) {
-  await this.assertCourseOwnership(userId, courseId);
+  async findAllForCourse(userId: string, courseId: string) {
+    await this.assertCourseOwnership(userId, courseId);
 
-  return this.prisma.gradeCategory.findMany({
-    where: { courseId },
-    orderBy: [{ createdAt: 'desc' }, { name: 'asc' }],
-    include: {
-      _count: { select: { assignments: true } },
-    },
-  });
-}
+    return this.prisma.gradeCategory.findMany({
+      where: { courseId },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }, { name: 'asc' }],
+      include: {
+        _count: { select: { assignments: true } },
+      },
+    });
+  }
 
 
   async findOne(userId: string, categoryId: string) {
@@ -112,13 +119,46 @@ async findAllForCourse(userId: string, courseId: string) {
     return this.prisma.gradeCategory.delete({ where: { id: categoryId } });
   }
 
-  private async getTotalWeight(courseId: string) {
-  const rows = await this.prisma.gradeCategory.findMany({
-    where: { courseId },
-    select: { weightPercent: true },
-  });
+  async updateOrder(userId: string, orderedIds: string[]) {
+    if (!orderedIds.length) return { count: 0 };
 
-  return rows.reduce((sum, r) => sum + r.weightPercent, 0);
+    const categories = await this.prisma.gradeCategory.findMany({
+      where: {
+        id: { in: orderedIds },
+        course: { semester: { userId } },
+      },
+      select: { id: true, courseId: true },
+    });
+
+    if (categories.length !== orderedIds.length) {
+      throw new ForbiddenException('Access denied');
     }
+
+    const courseIds = new Set(categories.map((c) => c.courseId));
+    if (courseIds.size !== 1) {
+      throw new BadRequestException('Categories must belong to the same course');
+    }
+
+    const orderMap = new Map(orderedIds.map((id, index) => [id, index + 1]));
+    await this.prisma.$transaction(
+      categories.map((category) =>
+        this.prisma.gradeCategory.update({
+          where: { id: category.id },
+          data: { sortOrder: orderMap.get(category.id) ?? 0 },
+        }),
+      ),
+    );
+
+    return { count: categories.length };
+  }
+
+  private async getTotalWeight(courseId: string) {
+    const rows = await this.prisma.gradeCategory.findMany({
+      where: { courseId },
+      select: { weightPercent: true },
+    });
+
+    return rows.reduce((sum, r) => sum + r.weightPercent, 0);
+  }
 
 }
