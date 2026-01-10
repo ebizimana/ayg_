@@ -815,7 +815,7 @@ export default function CoursePage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-end gap-3 md:items-center">
+              <div className="flex items-end gap-3">
                 <div className="flex flex-col gap-1">
                   <span className="text-xs font-semibold text-muted-foreground">Target grade</span>
                   <Select value={selectedGrade} onValueChange={(value) => setSelectedGrade(value)}>
