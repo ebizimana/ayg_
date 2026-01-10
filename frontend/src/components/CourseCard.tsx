@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { ProgressRing } from "@/components/ProgressRing";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal, TrendingUp, TrendingDown, Minus } from "lucide-react";
 
@@ -9,6 +10,7 @@ interface CourseCardProps {
   code: string;
   credits?: number;
   gradingMethod?: "WEIGHTED" | "POINTS";
+  isDemo?: boolean;
   currentGrade: number | null;
   letterGrade: string;
   targetLetter: string;
@@ -54,6 +56,7 @@ export function CourseCard({
   code,
   credits,
   gradingMethod,
+  isDemo,
   currentGrade,
   letterGrade,
   targetLetter,
@@ -91,6 +94,11 @@ export function CourseCard({
                 <span className="mx-2 text-slate-300">•</span>
                 <span>{credits} credits</span>
               </>
+            )}
+            {isDemo && (
+              <Badge variant="secondary" className="ml-2">
+                Demo
+              </Badge>
             )}
           </p>
           <div className="flex items-center gap-2">

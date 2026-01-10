@@ -83,6 +83,7 @@ type CourseResponse = {
   gradeFinalizedAt?: string | null;
   code?: string;
 };
+type SemesterResponse = { id: string; name: string };
 type Category = { id: string; name: string; weightPercent: number; dropLowest?: number; assignmentsCount?: number };
 type GradePlan = {
   actualPercent: number | null;
@@ -98,6 +99,8 @@ const gradeTargets: Record<string, number> = {
   D: 60,
   F: 0,
 };
+
+const LAST_SEMESTER_KEY = "ayg_last_semester_id";
 
 const gradeBadgeClasses: Record<string, string> = {
   A: "from-primary to-primary-dark",
@@ -137,6 +140,7 @@ export default function CoursePage() {
   const [courseCode, setCourseCode] = useState("");
   const [courseCredits, setCourseCredits] = useState(3);
   const [courseGradingMethod, setCourseGradingMethod] = useState<"WEIGHTED" | "POINTS">("WEIGHTED");
+  const [semesterName, setSemesterName] = useState("Semester");
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedGrade, setSelectedGrade] = useState<string>("A");
@@ -222,9 +226,10 @@ export default function CoursePage() {
     if (!courseId) return;
     setLoading(true);
     try {
-      const [course, cats] = await Promise.all([
+      const [course, cats, semesters] = await Promise.all([
         http<CourseResponse>(`/courses/${courseId}`),
         http<any[]>(`/courses/${courseId}/categories`),
+        http<SemesterResponse[]>("/semesters"),
       ]);
       if (course?.name) setCourseName(course.name);
       if (course?.credits !== undefined) setCourseCredits(course.credits);
@@ -233,6 +238,12 @@ export default function CoursePage() {
       if (course?.gradingMethod) setCourseGradingMethod(course.gradingMethod);
       if ((course as any)?.actualPercentGrade !== undefined && (course as any)?.actualPercentGrade !== null) {
         setActualPercent((course as any).actualPercentGrade / 100);
+      }
+
+      if (semesters?.length) {
+        const storedId = localStorage.getItem(LAST_SEMESTER_KEY);
+        const match = storedId ? semesters.find((s) => s.id === storedId) : undefined;
+        setSemesterName(match?.name ?? semesters[0].name);
       }
 
       const mappedCategories: Category[] =
@@ -774,6 +785,10 @@ export default function CoursePage() {
                 <GraduationCap className="h-5 w-5 text-white" />
               </div>
               <span className="text-xl font-bold text-foreground hidden sm:block">AYG</span>
+            </Link>
+            <span className="text-slate-400">›</span>
+            <Link to="/dashboard" className="font-semibold text-slate-700 hover:text-primary">
+              {semesterName}
             </Link>
             <span className="text-slate-400">›</span>
             <span className="font-semibold text-slate-700">Course</span>

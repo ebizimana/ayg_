@@ -116,6 +116,8 @@ const parseSemesterName = (name: string) => {
   return { season, year };
 };
 
+const LAST_SEMESTER_KEY = "ayg_last_semester_id";
+
 export default function Semester() {
   const { toast } = useToast();
   const nav = useNavigate();
@@ -160,11 +162,21 @@ export default function Semester() {
     if (selectedSemesterId) loadCourses(selectedSemesterId);
   }, [selectedSemesterId]);
 
+  useEffect(() => {
+    if (selectedSemesterId) {
+      localStorage.setItem(LAST_SEMESTER_KEY, selectedSemesterId);
+    }
+  }, [selectedSemesterId]);
+
   const loadSemesters = async () => {
     try {
       const data = await http<Semester[]>("/semesters");
       setSemesters(data ?? []);
-      if (data?.length) setSelectedSemesterId(data[0].id);
+      if (data?.length) {
+        const storedId = localStorage.getItem(LAST_SEMESTER_KEY);
+        const match = storedId ? data.find((s) => s.id === storedId) : undefined;
+        setSelectedSemesterId(match?.id ?? data[0].id);
+      }
     } catch (err) {
       toast({
         title: "Failed to load semesters",
@@ -959,6 +971,7 @@ export default function Semester() {
                     code={course.code ?? ""}
                     credits={course.credits}
                     gradingMethod={course.gradingMethod}
+                    isDemo={course.isDemo}
                     currentGrade={course.actualPercentGrade ?? null}
                     letterGrade={course.actualLetterGrade ?? "—"}
                     targetLetter={course.desiredLetterGrade}
