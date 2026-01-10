@@ -6,6 +6,7 @@ import { CoursesService } from './courses.service';
 import { CreateCourseDto } from './dto/create-course.dto';
 import { UpdateCourseDto } from './dto/update-course.dto';
 import { GradePlanQueryDto } from './dto/grade-plan.dto';
+import { UpdateCourseOrderDto } from './dto/update-course-order.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller()
@@ -28,6 +29,15 @@ export class CoursesController {
     @Param('semesterId') semesterId: string,
   ) {
     return this.coursesService.findAllForSemester(user.userId, semesterId);
+  }
+
+  @Patch('semesters/:semesterId/courses/reorder')
+  updateOrder(
+    @CurrentUser() user: AuthUser,
+    @Param('semesterId') semesterId: string,
+    @Body() dto: UpdateCourseOrderDto,
+  ) {
+    return this.coursesService.updateOrder(user.userId, semesterId, dto.orderedIds);
   }
 
   // Flat endpoints by course id

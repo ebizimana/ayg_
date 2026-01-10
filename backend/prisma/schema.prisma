@@ -45,7 +45,10 @@ model Course {
   gradingScaleId     String?
   actualLetterGrade  String?
   actualPercentGrade Float?
+  actualPointsLeftToLose Int?
   gradeFinalizedAt   DateTime?
+  sortOrder          Int           @default(0)
+  isDemo             Boolean       @default(false)
 
   semester           Semester      @relation(fields: [semesterId], references: [id], onDelete: Cascade)
   gradingScale       GradingScale? @relation(fields: [gradingScaleId], references: [id], onDelete: SetNull)

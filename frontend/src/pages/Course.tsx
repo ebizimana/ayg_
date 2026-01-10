@@ -79,6 +79,7 @@ type CourseResponse = {
   gradingMethod?: "WEIGHTED" | "POINTS";
   actualPercentGrade?: number | null;
   actualLetterGrade?: string | null;
+  actualPointsLeftToLose?: number | null;
   gradeFinalizedAt?: string | null;
   code?: string;
 };
@@ -163,6 +164,59 @@ export default function CoursePage() {
       })),
     );
   }, []);
+
+  const computePointsLeftToLose = useCallback(
+    (list: Assignment[], targetLetter: string) => {
+      if (!list.length) return null;
+      const target = gradeTargets[targetLetter] ?? 90;
+      const total = list.reduce((sum, a) => sum + a.max, 0);
+      if (total === 0) return null;
+      const targetPoints = (target / 100) * total;
+      const lostSoFar = list.reduce((sum, a) => {
+        if (a.earned === undefined) return sum;
+        return sum + Math.max(a.max - a.earned, 0);
+      }, 0);
+      const left = total - targetPoints - lostSoFar;
+      return Math.max(Math.round(left), 0);
+    },
+    [],
+  );
+
+  const percentToLetter = (percent: number) => {
+    if (percent >= gradeTargets.A) return "A";
+    if (percent >= gradeTargets.B) return "B";
+    if (percent >= gradeTargets.C) return "C";
+    if (percent >= gradeTargets.D) return "D";
+    return "F";
+  };
+
+  const persistActualGrade = async (percent: number | null, pointsLeft: number | null) => {
+    if (!courseId) return;
+    try {
+      await http(`/courses/${courseId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          actualPercentGrade: percent,
+          actualLetterGrade: percent === null ? null : percentToLetter(percent),
+          actualPointsLeftToLose: pointsLeft,
+        }),
+      });
+    } catch (err) {
+      // keep UI responsive even if persistence fails
+    }
+  };
+
+  const refreshActualGrade = async () => {
+    if (!courseId) return;
+    try {
+      const plan = await http<GradePlan>(`/courses/${courseId}/grade-plan?desiredGrade=${selectedGrade}`);
+      setActualPercent(plan.actualPercent);
+      const percentValue = plan.actualPercent !== null ? Math.round(plan.actualPercent * 100) : null;
+      await persistActualGrade(percentValue, null);
+    } catch (err) {
+      // ignore for now; grade plan errors handled elsewhere
+    }
+  };
 
   const loadData = useCallback(async () => {
     if (!courseId) return;
@@ -280,16 +334,8 @@ export default function CoursePage() {
 
   const pointsLeftToLose = useMemo(() => {
     if (!hasRun) return null;
-    if (assignments.length === 0) return null;
-    const target = gradeTargets[selectedGrade] ?? 90;
-    const targetPoints = (target / 100) * totalMax;
-    const lostSoFar = assignments.reduce((sum, a) => {
-      if (a.earned === undefined) return sum;
-      return sum + Math.max(a.max - a.earned, 0);
-    }, 0);
-    const left = totalMax - targetPoints - lostSoFar;
-    return Math.max(Math.round(left), 0);
-  }, [assignments, hasRun, selectedGrade, totalMax]);
+    return computePointsLeftToLose(assignments, selectedGrade);
+  }, [assignments, computePointsLeftToLose, hasRun, selectedGrade]);
 
   const remainingMaxPoints = useMemo(
     () => assignments.reduce((sum, a) => sum + (a.earned === undefined ? a.max : 0), 0),
@@ -443,6 +489,7 @@ export default function CoursePage() {
         setHasRun(false);
         setLastRun(null);
       }
+      await refreshActualGrade();
     } catch (err) {
       // toast handled in helpers when appropriate
     } finally {
@@ -460,6 +507,7 @@ export default function CoursePage() {
         setHasRun(false);
         setLastRun(null);
       }
+      await refreshActualGrade();
       toast({ title: "Assignment deleted" });
     } catch (err) {
       toast({
@@ -484,6 +532,9 @@ export default function CoursePage() {
           return { ...a, expected: req ? req.requiredPoints : undefined, isDropped };
         }),
       );
+      const percentValue = plan.actualPercent !== null ? Math.round(plan.actualPercent * 100) : null;
+      const pointsLeft = computePointsLeftToLose(assignments, selectedGrade);
+      await persistActualGrade(percentValue, pointsLeft);
       setLastRun(`Simulation updated for ${selectedGrade} target.`);
       toast({ title: "Simulation ran", description: `Target grade: ${selectedGrade}` });
     } catch (err) {

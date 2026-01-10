@@ -34,6 +34,12 @@ export class CoursesService {
     await this.assertSemesterOwnership(userId, semesterId);
 
     return this.prisma.$transaction(async (tx) => {
+      const maxOrder = await tx.course.aggregate({
+        where: { semesterId },
+        _max: { sortOrder: true },
+      });
+      const sortOrder = (maxOrder._max.sortOrder ?? 0) + 1;
+
       const course = await tx.course.create({
         data: {
           semesterId,
@@ -43,6 +49,8 @@ export class CoursesService {
           desiredLetterGrade: dto.desiredLetterGrade,
           gradingMethod: dto.gradingMethod ?? 'WEIGHTED',
           gradingScaleId: dto.gradingScaleId ?? null,
+          sortOrder,
+          isDemo: dto.isDemo ?? false,
         },
       });
 
@@ -67,7 +75,7 @@ export class CoursesService {
 
     return this.prisma.course.findMany({
       where: { semesterId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'desc' }],
     });
   }
 
@@ -151,6 +159,7 @@ export class CoursesService {
         ...(dto.gradingScaleId !== undefined ? { gradingScaleId: dto.gradingScaleId } : {}),
         ...(dto.actualLetterGrade !== undefined ? { actualLetterGrade: dto.actualLetterGrade } : {}),
         ...(dto.actualPercentGrade !== undefined ? { actualPercentGrade: dto.actualPercentGrade } : {}),
+        ...(dto.actualPointsLeftToLose !== undefined ? { actualPointsLeftToLose: dto.actualPointsLeftToLose } : {}),
         ...(dto.gradeFinalizedAt !== undefined
           ? { gradeFinalizedAt: dto.gradeFinalizedAt ? new Date(dto.gradeFinalizedAt) : null }
           : {}),
@@ -179,5 +188,32 @@ export class CoursesService {
   async remove(userId: string, courseId: string) {
     await this.assertCourseOwnership(userId, courseId);
     return this.prisma.course.delete({ where: { id: courseId } });
+  }
+
+  async updateOrder(userId: string, semesterId: string, orderedIds: string[]) {
+    if (!orderedIds.length) return { count: 0 };
+
+    await this.assertSemesterOwnership(userId, semesterId);
+
+    const courses = await this.prisma.course.findMany({
+      where: { id: { in: orderedIds }, semesterId },
+      select: { id: true },
+    });
+
+    if (courses.length !== orderedIds.length) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const orderMap = new Map(orderedIds.map((id, index) => [id, index + 1]));
+    await this.prisma.$transaction(
+      courses.map((course) =>
+        this.prisma.course.update({
+          where: { id: course.id },
+          data: { sortOrder: orderMap.get(course.id) ?? 0 },
+        }),
+      ),
+    );
+
+    return { count: courses.length };
   }
 }

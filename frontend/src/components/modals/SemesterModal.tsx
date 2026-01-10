@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -50,6 +50,17 @@ export function SemesterModal({
       season: "Fall",
     }
   );
+
+  useEffect(() => {
+    if (!open) return;
+    setFormData(
+      initialData || {
+        name: "",
+        year: String(currentYear),
+        season: "Fall",
+      }
+    );
+  }, [open, initialData]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,6 +130,30 @@ export function SemesterModal({
                   setFormData({ ...formData, name: e.target.value })
                 }
               />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="startDate">Start Date</Label>
+                <Input
+                  id="startDate"
+                  type="date"
+                  value={formData.startDate ?? ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, startDate: e.target.value })
+                  }
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="endDate">End Date</Label>
+                <Input
+                  id="endDate"
+                  type="date"
+                  value={formData.endDate ?? ""}
+                  onChange={(e) =>
+                    setFormData({ ...formData, endDate: e.target.value })
+                  }
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>

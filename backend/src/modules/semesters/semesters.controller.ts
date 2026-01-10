@@ -1,7 +1,8 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
-import type { AuthUser } from '../../common/decorators/current-user.decorator';import { SemestersService } from './semesters.service';
+import type { AuthUser } from '../../common/decorators/current-user.decorator';
+import { SemestersService } from './semesters.service';
 import { CreateSemesterDto } from './dto/create-semester.dto';
 import { UpdateSemesterDto } from './dto/update-semester.dto';
 
@@ -33,5 +34,10 @@ export class SemestersController {
   @Delete(':id')
   remove(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.semestersService.remove(user.userId, id);
+  }
+
+  @Post(':id/run-simulations')
+  runSimulations(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.semestersService.runSimulations(user.userId, id);
   }
 }

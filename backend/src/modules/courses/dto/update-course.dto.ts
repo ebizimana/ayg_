@@ -37,6 +37,10 @@ export class UpdateCourseDto {
   actualPercentGrade?: number | null;
 
   @IsOptional()
+  @IsInt()
+  actualPointsLeftToLose?: number | null;
+
+  @IsOptional()
   @IsDateString()
   gradeFinalizedAt?: string | null; // ISO string
 
