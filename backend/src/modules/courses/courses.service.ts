@@ -33,15 +33,32 @@ export class CoursesService {
   async create(userId: string, semesterId: string, dto: CreateCourseDto) {
     await this.assertSemesterOwnership(userId, semesterId);
 
-    return this.prisma.course.create({
-      data: {
-        semesterId,
-        code: dto.code ?? '',
-        name: dto.name,
-        credits: dto.credits,
-        desiredLetterGrade: dto.desiredLetterGrade,
-        gradingScaleId: dto.gradingScaleId ?? null,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const course = await tx.course.create({
+        data: {
+          semesterId,
+          code: dto.code ?? '',
+          name: dto.name,
+          credits: dto.credits,
+          desiredLetterGrade: dto.desiredLetterGrade,
+          gradingMethod: dto.gradingMethod ?? 'WEIGHTED',
+          gradingScaleId: dto.gradingScaleId ?? null,
+        },
+      });
+
+      if (course.gradingMethod === 'POINTS') {
+        await tx.gradeCategory.create({
+          data: {
+            courseId: course.id,
+            name: 'All Assignments',
+            weightPercent: 0,
+            dropLowest: 0,
+            sortOrder: 1,
+          },
+        });
+      }
+
+      return course;
     });
   }
 
@@ -84,6 +101,7 @@ export class CoursesService {
       id: course.id,
       name: course.name,
       desiredLetterGrade: (query.desiredGrade ?? 'A') as any,
+      gradingMethod: course.gradingMethod ?? 'WEIGHTED',
       categories: course.categories.map((cat) => ({
         id: cat.id,
         name: cat.name,
@@ -107,13 +125,29 @@ export class CoursesService {
   async update(userId: string, courseId: string, dto: UpdateCourseDto) {
     await this.assertCourseOwnership(userId, courseId);
 
-    return this.prisma.course.update({
+    if (dto.gradingMethod !== undefined) {
+      const existing = await this.prisma.course.findUnique({
+        where: { id: courseId },
+        select: { gradingMethod: true },
+      });
+      if (existing && existing.gradingMethod !== dto.gradingMethod) {
+        const assignmentCount = await this.prisma.assignment.count({
+          where: { category: { courseId } },
+        });
+        if (assignmentCount > 0) {
+          throw new ForbiddenException('Cannot change grading method after assignments exist.');
+        }
+      }
+    }
+
+    const updated = await this.prisma.course.update({
       where: { id: courseId },
       data: {
         ...(dto.name !== undefined ? { name: dto.name } : {}),
         ...(dto.code !== undefined ? { code: dto.code } : {}),
         ...(dto.credits !== undefined ? { credits: dto.credits } : {}),
         ...(dto.desiredLetterGrade !== undefined ? { desiredLetterGrade: dto.desiredLetterGrade } : {}),
+        ...(dto.gradingMethod !== undefined ? { gradingMethod: dto.gradingMethod } : {}),
         ...(dto.gradingScaleId !== undefined ? { gradingScaleId: dto.gradingScaleId } : {}),
         ...(dto.actualLetterGrade !== undefined ? { actualLetterGrade: dto.actualLetterGrade } : {}),
         ...(dto.actualPercentGrade !== undefined ? { actualPercentGrade: dto.actualPercentGrade } : {}),
@@ -123,6 +157,23 @@ export class CoursesService {
 
       },
     });
+
+    if (dto.gradingMethod === 'POINTS') {
+      const categoryCount = await this.prisma.gradeCategory.count({ where: { courseId } });
+      if (categoryCount === 0) {
+        await this.prisma.gradeCategory.create({
+          data: {
+            courseId,
+            name: 'All Assignments',
+            weightPercent: 0,
+            dropLowest: 0,
+            sortOrder: 1,
+          },
+        });
+      }
+    }
+
+    return updated;
   }
 
   async remove(userId: string, courseId: string) {

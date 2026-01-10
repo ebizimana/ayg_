@@ -27,6 +27,7 @@ interface CategoryModalProps {
   onSubmit: (data: CategoryFormData) => void;
   initialData?: CategoryFormData;
   onDelete?: () => void;
+  gradingMethod?: "WEIGHTED" | "POINTS";
 }
 
 export interface CategoryFormData {
@@ -42,6 +43,7 @@ export function CategoryModal({
   onSubmit,
   initialData,
   onDelete,
+  gradingMethod = "WEIGHTED",
 }: CategoryModalProps) {
   const emptyForm: CategoryFormData = {
     name: "",
@@ -100,10 +102,13 @@ export function CategoryModal({
                 onChange={(e) =>
                   setFormData({ ...formData, weight: Number(e.target.value) })
                 }
-                required
+                disabled={gradingMethod === "POINTS"}
+                required={gradingMethod !== "POINTS"}
               />
               <p className="text-xs text-muted-foreground">
-                How much this category counts toward your final grade.
+                {gradingMethod === "POINTS"
+                  ? "Points-based grading ignores category weights."
+                  : "How much this category counts toward your final grade."}
               </p>
             </div>
             <div className="flex items-center justify-between rounded-lg border p-4">

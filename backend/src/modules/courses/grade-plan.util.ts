@@ -51,7 +51,10 @@ function clampEarned(assignment: ScoredAssignment) {
 
 export function computeCoursePlan(input: CoursePlanInput): CoursePlanResult {
   const targetPercent = LETTER_TO_PERCENT[input.desiredLetterGrade] ?? 0.9;
-  const totalWeight = input.categories.reduce((sum, c) => sum + Math.max(c.weightPercent, 0), 0) || 1;
+  const isPointsBased = input.gradingMethod === 'POINTS';
+  const totalWeight = isPointsBased
+    ? 1
+    : input.categories.reduce((sum, c) => sum + Math.max(c.weightPercent, 0), 0) || 1;
 
   let achievable = true;
   let reason: string | undefined;
@@ -61,6 +64,17 @@ export function computeCoursePlan(input: CoursePlanInput): CoursePlanResult {
   let weightedActual = 0;
   let weightedProjected = 0;
   let coveredWeight = 0;
+  let pointsEarnedForActual = 0;
+  let pointsMaxForActual = 0;
+  let pointsEarnedForProjected = 0;
+  let pointsMaxForProjected = 0;
+  const pointBasedRemaining: typeof input.categories[0]['assignments'] = [];
+  const pointBasedEarnedKept: ScoredAssignment[] = [];
+  const pointBasedKept: ScoredAssignment[] = [];
+  const pointBasedKeptMaxByCategory = new Map<string, number>();
+
+  const maxPointsSum = (items: ScoredAssignment[], includeExtraCredit: boolean) =>
+    items.reduce((sum, item) => sum + (includeExtraCredit || !item.isExtraCredit ? item.maxPoints : 0), 0);
 
   for (const category of input.categories) {
     const weight = Math.max(category.weightPercent, 0) / totalWeight;
@@ -98,31 +112,42 @@ export function computeCoursePlan(input: CoursePlanInput): CoursePlanResult {
     const projectedMax = projectedDrop.kept.reduce((s, a) => s + a.maxPoints, 0);
     const projectedPercent = projectedMax > 0 ? projectedEarned / projectedMax : null;
 
-    // Requirements for remaining assignments in this category to hit targetPercent within the kept set
-    // Distribute across all remaining assignments so every upcoming item shows a requirement.
-    const remaining = category.assignments.filter((a) => a.earnedPoints === null);
-    const keptMax = projectedDrop.kept.reduce((s, a) => s + a.maxPoints, 0);
-    const earnedForReq = projectedDrop.kept
-      .filter((a) => graded.some((g) => g.id === a.id))
-      .reduce((s, a) => s + clampEarned(a), 0);
+    if (isPointsBased) {
+      pointBasedKept.push(...projectedDrop.kept);
+      pointBasedEarnedKept.push(...projectedDrop.kept.filter((a) => graded.some((g) => g.id === a.id)));
+      pointBasedRemaining.push(...ungraded);
+      pointsEarnedForActual += actualEarned;
+      pointsMaxForActual += maxPointsSum(actualDrop.kept, false);
+      pointsEarnedForProjected += projectedEarned;
+      pointsMaxForProjected += maxPointsSum(projectedDrop.kept, false);
+      pointBasedKeptMaxByCategory.set(category.id, maxPointsSum(projectedDrop.kept, false));
+    } else {
+      // Requirements for remaining assignments in this category to hit targetPercent within the kept set
+      // Distribute across all remaining assignments so every upcoming item shows a requirement.
+      const remaining = category.assignments.filter((a) => a.earnedPoints === null);
+      const keptMax = projectedDrop.kept.reduce((s, a) => s + a.maxPoints, 0);
+      const earnedForReq = projectedDrop.kept
+        .filter((a) => graded.some((g) => g.id === a.id))
+        .reduce((s, a) => s + clampEarned(a), 0);
 
-    const targetPoints = targetPercent * keptMax;
-    const neededPoints = Math.max(0, targetPoints - earnedForReq);
-    const remainingMax = remaining.reduce((s, a) => s + a.maxPoints, 0);
+      const targetPoints = targetPercent * keptMax;
+      const neededPoints = Math.max(0, targetPoints - earnedForReq);
+      const remainingMax = remaining.reduce((s, a) => s + a.maxPoints, 0);
 
-    if (remaining.length > 0 && remainingMax > 0) {
-      if (neededPoints > remainingMax && !remaining.some((r) => r.isExtraCredit)) {
+      if (remaining.length > 0 && remainingMax > 0) {
+        if (neededPoints > remainingMax && !remaining.some((r) => r.isExtraCredit)) {
+          achievable = false;
+          reason = reason ?? 'Target grade unattainable with remaining max points.';
+        }
+        const scale = remainingMax > 0 ? neededPoints / remainingMax : 0;
+        for (const a of remaining) {
+          const req = Math.min(a.maxPoints, a.maxPoints * scale);
+          requirements.push({ id: a.id, name: a.name, maxPoints: a.maxPoints, requiredPoints: Math.round(req) });
+        }
+      } else if (neededPoints > 0) {
         achievable = false;
-        reason = reason ?? 'Target grade unattainable with remaining max points.';
+        reason = reason ?? 'No remaining assignments to cover the target.';
       }
-      const scale = remainingMax > 0 ? neededPoints / remainingMax : 0;
-      for (const a of remaining) {
-        const req = Math.min(a.maxPoints, a.maxPoints * scale);
-        requirements.push({ id: a.id, name: a.name, maxPoints: a.maxPoints, requiredPoints: Math.round(req) });
-      }
-    } else if (neededPoints > 0) {
-      achievable = false;
-      reason = reason ?? 'No remaining assignments to cover the target.';
     }
 
     if (actualPercent !== null) {
@@ -136,16 +161,59 @@ export function computeCoursePlan(input: CoursePlanInput): CoursePlanResult {
     const catPlan: CategoryPlan = {
       id: category.id,
       name: category.name,
-      weight,
+      weight: weight,
       actualPercent,
       projectedPercent,
     };
     categoryPlans.push(catPlan);
   }
 
-  const actualPercent = coveredWeight > 0 ? weightedActual / coveredWeight : null;
-  const projectedPercent = weightedProjected;
-  const remainingWeight = 1 - coveredWeight;
+  let actualPercent: number | null = coveredWeight > 0 ? weightedActual / coveredWeight : null;
+  let projectedPercent: number | null = weightedProjected;
+  let remainingWeight = 1 - coveredWeight;
+
+  if (isPointsBased) {
+    const totalKeptMax = Array.from(pointBasedKeptMaxByCategory.values()).reduce((sum, value) => sum + value, 0);
+    if (totalKeptMax > 0) {
+      for (const catPlan of categoryPlans) {
+        const catMax = pointBasedKeptMaxByCategory.get(catPlan.id) ?? 0;
+        catPlan.weight = catMax / totalKeptMax;
+      }
+    } else {
+      for (const catPlan of categoryPlans) {
+        catPlan.weight = 0;
+      }
+    }
+    const actualMax = pointsMaxForActual;
+    const projectedMax = pointsMaxForProjected;
+    actualPercent = actualMax > 0 ? pointsEarnedForActual / actualMax : null;
+    projectedPercent = projectedMax > 0 ? pointsEarnedForProjected / projectedMax : null;
+    coveredWeight = actualMax > 0 ? 1 : 0;
+    remainingWeight = 0;
+
+    const targetPoints = targetPercent * projectedMax;
+    const earnedForReq = pointBasedEarnedKept.reduce((s, a) => s + clampEarned(a), 0);
+    const neededPoints = Math.max(0, targetPoints - earnedForReq);
+    const remainingMax = pointBasedRemaining.reduce(
+      (s, a) => s + (a.isExtraCredit ? 0 : a.maxPoints),
+      0,
+    );
+
+    if (pointBasedRemaining.length > 0 && (remainingMax > 0 || pointBasedRemaining.some((r) => r.isExtraCredit))) {
+      if (neededPoints > remainingMax && !pointBasedRemaining.some((r) => r.isExtraCredit)) {
+        achievable = false;
+        reason = reason ?? 'Target grade unattainable with remaining max points.';
+      }
+      const scale = remainingMax > 0 ? neededPoints / remainingMax : 0;
+      for (const a of pointBasedRemaining) {
+        const req = a.isExtraCredit ? 0 : Math.min(a.maxPoints, a.maxPoints * scale);
+        requirements.push({ id: a.id, name: a.name, maxPoints: a.maxPoints, requiredPoints: Math.round(req) });
+      }
+    } else if (neededPoints > 0) {
+      achievable = false;
+      reason = reason ?? 'No remaining assignments to cover the target.';
+    }
+  }
 
   return {
     targetPercent,

@@ -45,7 +45,7 @@ import { useToast } from "@/hooks/use-toast";
 import { http } from "@/lib/http";
 
 type Semester = { id: string; name: string; startDate: string; endDate: string };
-type Course = { id: string; name: string; code?: string; credits: number; desiredLetterGrade: string };
+type Course = { id: string; name: string; code?: string; credits: number; desiredLetterGrade: string; gradingMethod?: "WEIGHTED" | "POINTS" };
 type Category = { id: string; name: string; weightPercent?: number; dropLowest?: number };
 type Assignment = {
   id: string;
@@ -59,7 +59,7 @@ type Assignment = {
 type ModalType = "semester" | "course" | "category" | "assignment" | "grade" | null;
 type DemoAssignment = { name: string; maxPoints: number; dueDate?: string; isExtraCredit?: boolean; earnedPoints?: number };
 type DemoCategory = { name: string; weightPercent: number; dropLowest?: number; assignments: DemoAssignment[] };
-type DemoCourse = { name: string; credits: number; desiredLetterGrade: string; categories: DemoCategory[] };
+type DemoCourse = { name: string; credits: number; desiredLetterGrade: string; gradingMethod?: "WEIGHTED" | "POINTS"; categories: DemoCategory[] };
 
 const seasonDates = (season: string, yearStr: string) => {
   const year = Number(yearStr) || new Date().getFullYear();
@@ -103,6 +103,10 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(false);
 
   const token = useMemo(() => localStorage.getItem("ayg_token"), []);
+  const activeCourse = useMemo(
+    () => courses.find((course) => course.id === selectedCourseId),
+    [courses, selectedCourseId],
+  );
 
   useEffect(() => {
     if (!token) {
@@ -198,6 +202,7 @@ export default function Dashboard() {
         code: form.code,
         credits: form.credits,
         desiredLetterGrade: form.targetGrade,
+        gradingMethod: form.gradingMethod,
       };
       const created = await http<Course>(`/semesters/${selectedSemesterId}/courses`, {
         method: "POST",
@@ -753,6 +758,7 @@ export default function Dashboard() {
         open={activeModal === "category"}
         onOpenChange={(open) => !open && setActiveModal(null)}
         onSubmit={(data: CategoryFormData) => handleModalSubmit("category", data)}
+        gradingMethod={activeCourse?.gradingMethod ?? "WEIGHTED"}
       />
       <AssignmentModal
         open={activeModal === "assignment"}

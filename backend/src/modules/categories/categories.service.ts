@@ -10,7 +10,7 @@ export class CategoriesService {
   private async assertCourseOwnership(userId: string, courseId: string) {
     const course = await this.prisma.course.findUnique({
       where: { id: courseId },
-      select: { id: true, semesterId: true },
+      select: { id: true, semesterId: true, gradingMethod: true },
     });
 
     if (!course) throw new NotFoundException('Course not found');
@@ -37,15 +37,17 @@ export class CategoriesService {
   }
 
   async create(userId: string, courseId: string, dto: CreateCategoryDto) {
-    await this.assertCourseOwnership(userId, courseId);
+    const course = await this.assertCourseOwnership(userId, courseId);
 
-    const currentTotal = await this.getTotalWeight(courseId);
-    const nextTotal = currentTotal + dto.weightPercent;
+    if (course.gradingMethod !== 'POINTS') {
+      const currentTotal = await this.getTotalWeight(courseId);
+      const nextTotal = currentTotal + dto.weightPercent;
 
-    if (nextTotal > 100) {
+      if (nextTotal > 100) {
         throw new BadRequestException(
-        `Category weights exceed 100%. Current: ${currentTotal}%, adding: ${dto.weightPercent}%, would become: ${nextTotal}%`,
-      );
+          `Category weights exceed 100%. Current: ${currentTotal}%, adding: ${dto.weightPercent}%, would become: ${nextTotal}%`,
+        );
+      }
     }
 
     const maxOrder = await this.prisma.gradeCategory.aggregate({
@@ -77,7 +79,6 @@ export class CategoriesService {
     });
   }
 
-
   async findOne(userId: string, categoryId: string) {
     await this.assertCategoryOwnership(userId, categoryId);
     return this.prisma.gradeCategory.findUnique({ where: { id: categoryId } });
@@ -87,22 +88,24 @@ export class CategoriesService {
     await this.assertCategoryOwnership(userId, categoryId);
 
     if (dto.weightPercent !== undefined) {
-  const existing = await this.prisma.gradeCategory.findUnique({
-    where: { id: categoryId },
-    select: { courseId: true, weightPercent: true },
-  });
-  if (!existing) throw new NotFoundException('Category not found');
+      const existing = await this.prisma.gradeCategory.findUnique({
+        where: { id: categoryId },
+        select: { courseId: true, weightPercent: true },
+      });
+      if (!existing) throw new NotFoundException('Category not found');
 
-  const currentTotal = await this.getTotalWeight(existing.courseId);
-  const nextTotal = currentTotal - existing.weightPercent + dto.weightPercent;
+      const course = await this.assertCourseOwnership(userId, existing.courseId);
+      if (course.gradingMethod !== 'POINTS') {
+        const currentTotal = await this.getTotalWeight(existing.courseId);
+        const nextTotal = currentTotal - existing.weightPercent + dto.weightPercent;
 
-  if (nextTotal > 100) {
-    throw new BadRequestException(
-      `Category weights exceed 100%. Current: ${currentTotal}%, updating would become: ${nextTotal}%`,
-    );
-  }
-}
-
+        if (nextTotal > 100) {
+          throw new BadRequestException(
+            `Category weights exceed 100%. Current: ${currentTotal}%, updating would become: ${nextTotal}%`,
+          );
+        }
+      }
+    }
 
     return this.prisma.gradeCategory.update({
       where: { id: categoryId },

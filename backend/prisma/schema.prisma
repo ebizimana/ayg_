@@ -41,6 +41,7 @@ model Course {
   name               String
   credits            Int
   desiredLetterGrade String
+  gradingMethod      GradingMethod @default(WEIGHTED)
   gradingScaleId     String?
   actualLetterGrade  String?
   actualPercentGrade Float?
@@ -55,6 +56,11 @@ model Course {
 
   @@index([semesterId])
   @@index([gradingScaleId])
+}
+
+enum GradingMethod {
+  WEIGHTED
+  POINTS
 }
 
 model GradingScale {

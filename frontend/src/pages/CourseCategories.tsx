@@ -17,7 +17,7 @@ type Category = {
   assignmentsCount?: number;
   sortOrder: number;
 };
-type CourseResponse = { name?: string };
+type CourseResponse = { name?: string; gradingMethod?: "WEIGHTED" | "POINTS" };
 type GradePlan = {
   categories: { id: string; weight: number; actualPercent: number | null }[];
 };
@@ -37,6 +37,7 @@ export default function CourseCategories() {
   const { toast } = useToast();
 
   const [courseName, setCourseName] = useState("Course");
+  const [courseGradingMethod, setCourseGradingMethod] = useState<"WEIGHTED" | "POINTS">("WEIGHTED");
   const [categories, setCategories] = useState<Category[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -46,6 +47,7 @@ export default function CourseCategories() {
   const [sortBy, setSortBy] = useState<"name" | "weight" | "count" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [metrics, setMetrics] = useState<CategoryMetrics[]>([]);
+  const [totalPoints, setTotalPoints] = useState(0);
 
   const loadData = useCallback(async () => {
     if (!courseId) return;
@@ -57,6 +59,7 @@ export default function CourseCategories() {
         http<GradePlan>(`/courses/${courseId}/grade-plan`),
       ]);
       if (course?.name) setCourseName(course.name);
+      if (course?.gradingMethod) setCourseGradingMethod(course.gradingMethod);
       const mapped: Category[] =
         cats?.map((c: any) => ({
           id: c.id,
@@ -75,12 +78,18 @@ export default function CourseCategories() {
         list.filter((a) => a.grade?.earnedPoints != null || a.grade?.gradedAt != null).length,
       );
       const totalCounts = assignmentsByCategory.map((list) => list.length);
+      const totalPointsValue = assignmentsByCategory
+        .flat()
+        .reduce((sum, assignment) => sum + (assignment.maxPoints ?? 0), 0);
+      setTotalPoints(totalPointsValue);
       const planMap = new Map(plan.categories?.map((c) => [c.id, c]) ?? []);
       const nextMetrics: CategoryMetrics[] = mapped.map((cat, index) => {
         const planCat = planMap.get(cat.id);
         const actualPercent = planCat?.actualPercent ?? null;
+        const baseWeight =
+          course?.gradingMethod === "POINTS" ? (planCat?.weight ?? 0) * 100 : cat.weightPercent;
         const contributionPercent =
-          actualPercent !== null ? actualPercent * cat.weightPercent : null;
+          actualPercent !== null ? actualPercent * baseWeight : null;
         return {
           id: cat.id,
           name: cat.name,
@@ -138,6 +147,7 @@ export default function CourseCategories() {
     [metrics],
   );
   const metricsMap = useMemo(() => new Map(metrics.map((m) => [m.id, m])), [metrics]);
+  const isPointsBased = courseGradingMethod === "POINTS";
 
   const toggleSort = (col: "name" | "weight" | "count") => {
     if (sortBy === col) setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
@@ -331,7 +341,8 @@ export default function CourseCategories() {
                 Name {sortBy === "name" && <ChevronDown className={`h-4 w-4 ${sortDir === "asc" ? "-rotate-180" : ""}`} />}
               </button>
               <button className="px-4 py-3 text-left flex items-center gap-1 hover:text-primary" onClick={() => toggleSort("weight")}>
-                Weight {sortBy === "weight" && <ChevronDown className={`h-4 w-4 ${sortDir === "asc" ? "-rotate-180" : ""}`} />}
+                {isPointsBased ? "Weight (ignored)" : "Weight"}{" "}
+                {sortBy === "weight" && <ChevronDown className={`h-4 w-4 ${sortDir === "asc" ? "-rotate-180" : ""}`} />}
               </button>
               <div className="px-4 py-3 text-right">Contribution</div>
               <div className="px-4 py-3 text-right">Category %</div>
@@ -349,17 +360,17 @@ export default function CourseCategories() {
                   onDragStart={() => setDraggingId(cat.id)}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => handleDrop(cat.id)}
+                  onClick={() => openEdit(cat)}
                 >
-                  <div className="px-4 py-3 flex items-center text-slate-400">
+                  <div className="px-4 py-3 flex items-center text-slate-400" onClick={(e) => e.stopPropagation()}>
                     <GripVertical className="h-5 w-5" />
                   </div>
-                  <button
-                    className="px-4 py-3 text-left font-semibold text-foreground hover:text-primary"
-                    onClick={() => openEdit(cat)}
-                  >
+                  <div className="px-4 py-3 text-left font-semibold text-foreground">
                     {cat.name}
-                  </button>
-                  <div className="px-4 py-3 text-muted-foreground">{cat.weightPercent}%</div>
+                  </div>
+                  <div className="px-4 py-3 text-muted-foreground">
+                    {isPointsBased ? "—" : `${cat.weightPercent}%`}
+                  </div>
                   <div className="px-4 py-3 text-right text-muted-foreground">
                     {metricsMap.get(cat.id)?.contributionPercent === null || metricsMap.get(cat.id)?.contributionPercent === undefined
                       ? "—"
@@ -388,22 +399,29 @@ export default function CourseCategories() {
             <CardTitle className="text-base">Category summary</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-[auto_1fr_1fr] sm:items-center">
-            <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
-              <div
-                className="flex h-24 w-24 items-center justify-center rounded-full"
-                style={{
-                  background: `conic-gradient(#10b981 ${Math.min(100, Math.round(totalWeight))}%, #e2e8f0 0)`,
-                }}
-              >
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-lg font-bold text-foreground">
-                  {Math.round(totalWeight)}%
+            {isPointsBased ? (
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-5 text-center">
+                <p className="text-sm text-muted-foreground">Total Points</p>
+                <p className="text-3xl font-bold text-foreground">{Math.round(totalPoints)}</p>
+              </div>
+            ) : (
+              <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                <div
+                  className="flex h-24 w-24 items-center justify-center rounded-full"
+                  style={{
+                    background: `conic-gradient(#10b981 ${Math.min(100, Math.round(totalWeight))}%, #e2e8f0 0)`,
+                  }}
+                >
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-lg font-bold text-foreground">
+                    {Math.round(totalWeight)}%
+                  </div>
+                </div>
+                <div>
+                  <p className="text-sm text-muted-foreground">Total category weight</p>
+                  <p className="text-xs text-muted-foreground">Target is 100%</p>
                 </div>
               </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Total category weight</p>
-                <p className="text-xs text-muted-foreground">Target is 100%</p>
-              </div>
-            </div>
+            )}
             <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-center">
               <p className="text-sm text-muted-foreground">Total Categories</p>
               <p className="text-2xl font-bold text-foreground">{categories.length}</p>
@@ -420,6 +438,7 @@ export default function CourseCategories() {
         open={modalOpen}
         onOpenChange={setModalOpen}
         onSubmit={handleSave}
+        gradingMethod={courseGradingMethod}
         onDelete={
           editingCategory
             ? () => {

@@ -5,6 +5,7 @@ const baseCourse = (): CoursePlanInput => ({
   id: 'course1',
   name: 'Test',
   desiredLetterGrade: 'A',
+  gradingMethod: 'WEIGHTED',
   categories: [
     {
       id: 'cat1',
@@ -80,5 +81,33 @@ describe('computeCoursePlan', () => {
 
     const result = computeCoursePlan(input);
     expect(result.droppedAssignmentIds).toEqual(['a1']);
+  });
+
+  it('uses total points for actual percent in points-based mode', () => {
+    const input = baseCourse();
+    input.gradingMethod = 'POINTS';
+    input.categories = [
+      {
+        id: 'cat1',
+        name: 'LowWeight',
+        weightPercent: 10,
+        dropLowest: 0,
+        assignments: [
+          { id: 'a1', name: 'A1', maxPoints: 100, isExtraCredit: false, isGraded: true, earnedPoints: 50, expectedPoints: null },
+        ],
+      },
+      {
+        id: 'cat2',
+        name: 'HighWeight',
+        weightPercent: 90,
+        dropLowest: 0,
+        assignments: [
+          { id: 'a2', name: 'A2', maxPoints: 100, isExtraCredit: false, isGraded: true, earnedPoints: 100, expectedPoints: null },
+        ],
+      },
+    ];
+
+    const result = computeCoursePlan(input);
+    expect(result.actualPercent).toBeCloseTo(0.75, 2);
   });
 });

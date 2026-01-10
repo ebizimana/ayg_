@@ -1,4 +1,4 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsInt, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateCourseDto {
   @IsString()
@@ -11,6 +11,10 @@ export class CreateCourseDto {
   @IsString()
   @IsNotEmpty()
   desiredLetterGrade!: string;   // e.g. "A"
+
+  @IsOptional()
+  @IsIn(['WEIGHTED', 'POINTS'])
+  gradingMethod?: 'WEIGHTED' | 'POINTS';
 
   @IsOptional()
   @IsString()

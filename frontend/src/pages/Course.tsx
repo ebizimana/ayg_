@@ -76,6 +76,7 @@ type CourseResponse = {
   name?: string;
   credits?: number;
   desiredLetterGrade?: string;
+  gradingMethod?: "WEIGHTED" | "POINTS";
   actualPercentGrade?: number | null;
   actualLetterGrade?: string | null;
   gradeFinalizedAt?: string | null;
@@ -134,10 +135,12 @@ export default function CoursePage() {
   const [courseName, setCourseName] = useState("Calculus I");
   const [courseCode, setCourseCode] = useState("");
   const [courseCredits, setCourseCredits] = useState(3);
+  const [courseGradingMethod, setCourseGradingMethod] = useState<"WEIGHTED" | "POINTS">("WEIGHTED");
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedGrade, setSelectedGrade] = useState<string>("A");
   const [lastRun, setLastRun] = useState<string | null>(null);
+  const [hasRun, setHasRun] = useState(false);
   const [form, setForm] = useState<AssignmentForm | null>(null);
   const [mode, setMode] = useState<"edit" | "add">("edit");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -149,6 +152,17 @@ export default function CoursePage() {
   const [loading, setLoading] = useState(false);
   const [actualPercent, setActualPercent] = useState<number | null>(null);
   const { toast } = useToast();
+  const [categoryLocked, setCategoryLocked] = useState(false);
+  const [maxLocked, setMaxLocked] = useState(false);
+
+  const clearExpectedPoints = useCallback(() => {
+    setAssignments((prev) =>
+      prev.map((assignment) => ({
+        ...assignment,
+        expected: assignment.earned === undefined ? undefined : assignment.expected,
+      })),
+    );
+  }, []);
 
   const loadData = useCallback(async () => {
     if (!courseId) return;
@@ -162,6 +176,7 @@ export default function CoursePage() {
       if (course?.credits !== undefined) setCourseCredits(course.credits);
       if (course?.code !== undefined) setCourseCode(course.code);
       if ((course as any)?.desiredLetterGrade) setSelectedGrade((course as any).desiredLetterGrade);
+      if (course?.gradingMethod) setCourseGradingMethod(course.gradingMethod);
       if ((course as any)?.actualPercentGrade !== undefined && (course as any)?.actualPercentGrade !== null) {
         setActualPercent((course as any).actualPercentGrade / 100);
       }
@@ -198,14 +213,24 @@ export default function CoursePage() {
       // load grade plan for current target to hydrate expected for remaining
       const plan = await http<GradePlan>(`/courses/${courseId}/grade-plan?desiredGrade=${selectedGrade}`);
       setActualPercent(plan.actualPercent);
-      setAssignments((prev) =>
-        prev.map((a) => {
-          const req = plan.requirements?.find((r) => r.id === a.id);
-          const isDropped = plan.droppedAssignmentIds?.includes(a.id) ?? false;
-          if (a.earned !== undefined) return { ...a, isDropped };
-          return { ...a, expected: req ? req.requiredPoints : undefined, isDropped };
-        }),
-      );
+      if (hasRun) {
+        setAssignments((prev) =>
+          prev.map((a) => {
+            const req = plan.requirements?.find((r) => r.id === a.id);
+            const isDropped = plan.droppedAssignmentIds?.includes(a.id) ?? false;
+            if (a.earned !== undefined) return { ...a, isDropped };
+            return { ...a, expected: req ? req.requiredPoints : undefined, isDropped };
+          }),
+        );
+      } else {
+        setAssignments((prev) =>
+          prev.map((a) => ({
+            ...a,
+            expected: a.earned === undefined ? undefined : a.expected,
+            isDropped: false,
+          })),
+        );
+      }
     } catch (err) {
       console.error(err);
       toast({
@@ -254,6 +279,8 @@ export default function CoursePage() {
   }, [assignments]);
 
   const pointsLeftToLose = useMemo(() => {
+    if (!hasRun) return null;
+    if (assignments.length === 0) return null;
     const target = gradeTargets[selectedGrade] ?? 90;
     const targetPoints = (target / 100) * totalMax;
     const lostSoFar = assignments.reduce((sum, a) => {
@@ -262,7 +289,7 @@ export default function CoursePage() {
     }, 0);
     const left = totalMax - targetPoints - lostSoFar;
     return Math.max(Math.round(left), 0);
-  }, [assignments, selectedGrade, totalMax]);
+  }, [assignments, hasRun, selectedGrade, totalMax]);
 
   const remainingMaxPoints = useMemo(
     () => assignments.reduce((sum, a) => sum + (a.earned === undefined ? a.max : 0), 0),
@@ -276,16 +303,18 @@ export default function CoursePage() {
   }, [earnedPoints, selectedGrade, totalMax]);
 
   const neededAvgOnRemaining = useMemo(() => {
+    if (!hasRun) return null;
     if (remainingMaxPoints <= 0) return null;
     const avg = neededPoints / remainingMaxPoints;
     return Math.max(0, Math.min(1, avg));
-  }, [neededPoints, remainingMaxPoints]);
+  }, [hasRun, neededPoints, remainingMaxPoints]);
 
-  const targetMet = neededPoints <= 0;
+  const targetMet = hasRun && neededPoints <= 0;
 
   const riskLevel =
-    pointsLeftToLose < 10 ? "danger" : pointsLeftToLose < 50 ? "caution" : "safe";
-  const riskLabel = riskLevel === "safe" ? "Safe" : riskLevel === "caution" ? "Caution" : "Danger";
+    pointsLeftToLose === null ? "none" : pointsLeftToLose < 10 ? "danger" : pointsLeftToLose < 50 ? "caution" : "safe";
+  const riskLabel =
+    riskLevel === "none" ? "—" : riskLevel === "safe" ? "Safe" : riskLevel === "caution" ? "Caution" : "Danger";
 
   const categoryNameFor = (categoryId?: string) => categories.find((c) => c.id === categoryId)?.name ?? "—";
 
@@ -306,10 +335,17 @@ export default function CoursePage() {
   const openEditor = (assignment: Assignment) => {
     setMode("edit");
     setForm(toForm(assignment));
+    setCategoryLocked(true);
+    setMaxLocked(true);
+    if (hasRun) {
+      clearExpectedPoints();
+      setHasRun(false);
+      setLastRun(null);
+    }
   };
 
   const openCreate = () => {
-    if (!categories.length) {
+    if (!categories.length && courseGradingMethod !== "POINTS") {
       toast({ title: "Add a category first", variant: "destructive" });
       return;
     }
@@ -324,6 +360,13 @@ export default function CoursePage() {
       categoryId: categories[0]?.id ?? "",
       isExtraCredit: false,
     });
+    setCategoryLocked(false);
+    setMaxLocked(false);
+    if (hasRun) {
+      clearExpectedPoints();
+      setHasRun(false);
+      setLastRun(null);
+    }
   };
 
   const saveAssignment = async () => {
@@ -395,6 +438,11 @@ export default function CoursePage() {
         );
       }
       toast({ title: mode === "add" ? "Assignment added" : "Assignment saved", description: payload.name });
+      if (hasRun) {
+        clearExpectedPoints();
+        setHasRun(false);
+        setLastRun(null);
+      }
     } catch (err) {
       // toast handled in helpers when appropriate
     } finally {
@@ -407,6 +455,11 @@ export default function CoursePage() {
       await http(`/assignments/${id}`, { method: "DELETE" });
       setAssignments((prev) => prev.filter((a) => a.id !== id));
       setForm(null);
+      if (hasRun) {
+        clearExpectedPoints();
+        setHasRun(false);
+        setLastRun(null);
+      }
       toast({ title: "Assignment deleted" });
     } catch (err) {
       toast({
@@ -420,6 +473,7 @@ export default function CoursePage() {
   const runSimulation = async () => {
     if (!courseId) return;
     try {
+      setHasRun(true);
       const plan = await http<GradePlan>(`/courses/${courseId}/grade-plan?desiredGrade=${selectedGrade}`);
       setActualPercent(plan.actualPercent);
       setAssignments((prev) =>
@@ -441,7 +495,7 @@ export default function CoursePage() {
     }
   };
 
-  const handleCourseSave = (data: { name: string; code: string; credits: number; targetGrade: string }) => {
+  const handleCourseSave = (data: { name: string; code: string; credits: number; targetGrade: string; gradingMethod: "WEIGHTED" | "POINTS" }) => {
     if (courseId) {
       http(`/courses/${courseId}`, {
         method: "PATCH",
@@ -450,6 +504,7 @@ export default function CoursePage() {
           code: data.code,
           credits: data.credits,
           desiredLetterGrade: data.targetGrade,
+          gradingMethod: data.gradingMethod,
         }),
       }).catch(() => undefined);
     }
@@ -457,6 +512,7 @@ export default function CoursePage() {
     setSelectedGrade(data.targetGrade);
     setCourseCredits(data.credits);
     setCourseCode(data.code);
+    setCourseGradingMethod(data.gradingMethod);
     toast({ title: "Course updated", description: data.name });
   };
 
@@ -564,6 +620,99 @@ export default function CoursePage() {
     return `${value} / ${max}`;
   };
 
+  const suggestCategoryId = (name: string) => {
+    const normalizedName = name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    if (!normalizedName) return null;
+
+    const keywordGroups = [
+      ["homework", "hw", "h w", "problem set", "ps", "assignment"],
+      ["quiz", "quizzes"],
+      ["test", "exam", "midterm", "final"],
+      ["lab", "labs"],
+      ["project", "presentation"],
+      ["paper", "essay", "writing"],
+      ["participation", "attendance"],
+    ];
+
+    let best: { id: string; score: number } | null = null;
+    for (const category of categories) {
+      const catName = category.name.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      if (!catName) continue;
+      let score = 0;
+      if (normalizedName.startsWith(catName)) score = Math.max(score, 2);
+      if (normalizedName.includes(catName)) score = Math.max(score, 1);
+
+      for (const group of keywordGroups) {
+        const nameMatch = group.some((keyword) => normalizedName.includes(keyword));
+        if (!nameMatch) continue;
+        const catMatch = group.some((keyword) => catName.includes(keyword));
+        if (catMatch) score = Math.max(score, 3);
+      }
+
+      if (score > 0 && (!best || score > best.score)) {
+        best = { id: category.id, score };
+      }
+    }
+
+    return best?.id ?? null;
+  };
+
+  const handleNameChange = (value: string) => {
+    setForm((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, name: value };
+      if (mode === "add" && !categoryLocked) {
+        const suggested = suggestCategoryId(value);
+        if (suggested) next.categoryId = suggested;
+      }
+      if (mode === "add" && !maxLocked) {
+        const suggestedMax = suggestMaxPoints(next.categoryId);
+        if (suggestedMax !== null) next.max = suggestedMax.toString();
+      }
+      return next;
+    });
+  };
+
+  const suggestMaxPoints = (categoryId: string) => {
+    if (!categoryId) return null;
+    const values = assignments
+      .filter((assignment) => assignment.categoryId === categoryId)
+      .map((assignment) => assignment.max)
+      .filter((value) => value > 0);
+    if (!values.length) return null;
+    const counts = new Map<number, number>();
+    for (const value of values) {
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+    let bestValue = values[values.length - 1];
+    let bestCount = 0;
+    for (const [value, count] of counts) {
+      if (count > bestCount) {
+        bestValue = value;
+        bestCount = count;
+      }
+    }
+    return bestValue;
+  };
+
+  const handleCategoryChange = (value: string) => {
+    setForm((prev) => {
+      if (!prev) return prev;
+      const next = { ...prev, categoryId: value };
+      if (mode === "add" && !maxLocked) {
+        const suggestedMax = suggestMaxPoints(value);
+        if (suggestedMax !== null) next.max = suggestedMax.toString();
+      }
+      return next;
+    });
+    setCategoryLocked(true);
+  };
+
+  const handleMaxChange = (value: string) => {
+    setMaxLocked(true);
+    setForm((prev) => (prev ? { ...prev, max: value } : prev));
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-slate-50 pb-12">
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
@@ -613,97 +762,83 @@ export default function CoursePage() {
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-6">
         <div className="sticky top-16 z-30">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-2xl border border-slate-200 bg-white/90 shadow-md backdrop-blur">
-          <div className="flex items-center gap-4 px-5 py-4">
-            <div
-              className={`h-12 w-12 rounded-xl bg-gradient-to-br text-white font-bold grid place-items-center shadow-lg ${gradeBadgeClasses[heroLetter] ?? "from-primary to-primary-dark"}`}
-            >
-              {heroLetter}
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.15em] text-primary font-semibold">Course</p>
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-bold text-foreground">{courseName}</h1>
-                <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="rounded-full">
-                      <MoreHorizontal className="h-5 w-5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-44">
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setEditCourseOpen(true);
-                      }}
-                    >
-                      Edit course
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => {
-                        setMenuOpen(false);
-                        if (courseId) nav(`/courses/${courseId}/categories`);
-                        else nav("/dashboard");
-                      }}
-                    >
-                      Manage categories
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-destructive"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setConfirmDeleteOpen(true);
-                      }}
-                    >
-                      Delete course
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/90 shadow-md backdrop-blur">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-5 py-4">
+              <div className="flex items-center gap-4">
+                <div
+                  className={`h-12 w-12 rounded-xl bg-gradient-to-br text-white font-bold grid place-items-center shadow-lg ${gradeBadgeClasses[heroLetter] ?? "from-primary to-primary-dark"}`}
+                >
+                  {heroLetter}
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.15em] text-primary font-semibold">Course</p>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-2xl font-bold text-foreground">{courseName}</h1>
+                    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="rounded-full">
+                          <MoreHorizontal className="h-5 w-5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-44">
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setMenuOpen(false);
+                            setEditCourseOpen(true);
+                          }}
+                        >
+                          Edit course
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() => {
+                            setMenuOpen(false);
+                            if (courseId) nav(`/courses/${courseId}/categories`);
+                            else nav("/dashboard");
+                          }}
+                        >
+                          Manage categories
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => {
+                            setMenuOpen(false);
+                            setConfirmDeleteOpen(true);
+                          }}
+                        >
+                          Delete course
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Set a target grade, run the simulation, and see what you need on each assignment.
+                  </p>
+                </div>
               </div>
-              <p className="text-sm text-muted-foreground">
-                Set a target grade, run the simulation, and see what you need on each assignment.
-              </p>
+              <div className="flex items-end gap-3 md:items-center">
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-semibold text-muted-foreground">Target grade</span>
+                  <Select value={selectedGrade} onValueChange={(value) => setSelectedGrade(value)}>
+                    <SelectTrigger className="w-28">
+                      <SelectValue placeholder="Grade" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {options.map((opt) => (
+                        <SelectItem key={opt} value={opt}>
+                          {opt}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button className="gap-2" onClick={runSimulation}>
+                  <Play className="h-4 w-4" />
+                  Run
+                </Button>
+              </div>
             </div>
-          </div>
-          <div className="flex items-end gap-3 px-5 pb-4 md:pb-0">
-            <div className="flex flex-col gap-1">
-              <span className="text-xs font-semibold text-muted-foreground">Target grade</span>
-              <Select value={selectedGrade} onValueChange={(value) => setSelectedGrade(value)}>
-                <SelectTrigger className="w-28">
-                  <SelectValue placeholder="Grade" />
-                </SelectTrigger>
-                <SelectContent>
-                  {options.map((opt) => (
-                    <SelectItem key={opt} value={opt}>
-                      {opt}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <Button className="gap-2" onClick={runSimulation}>
-              <Play className="h-4 w-4" />
-              Run
-            </Button>
-          </div>
-        </div>
-        </div>
-
-        {categories.length === 0 ? (
-          <Card className="bg-muted/30 border-dashed">
-            <CardHeader>
-              <CardTitle className="text-muted-foreground text-sm">No categories yet</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Button variant="outline" onClick={() => nav(`/courses/${courseId}/categories`)}>
-                Add your first category
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          <Card className="border-slate-200 shadow-lg">
-            <CardHeader className="pb-3 flex flex-row items-center justify-center">
-              <div className="flex items-center gap-2">
+            <div className="flex justify-center px-5 pb-4">
+              <div className="flex flex-wrap items-center justify-center gap-2">
                 <Button
                   variant="outline"
                   className="gap-2 bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200 hover:text-slate-800"
@@ -715,14 +850,38 @@ export default function CoursePage() {
                 <Button
                   className="gap-2 bg-success text-white hover:bg-success/90"
                   onClick={openCreate}
-                  disabled={loading || !categories.length}
+                  disabled={loading || (!categories.length && courseGradingMethod !== "POINTS")}
                 >
                   <Plus className="h-4 w-4" />
                   Add assignment
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+
+        {categories.length === 0 ? (
+          <Card className="bg-muted/30 border-dashed">
+            <CardHeader>
+              <CardTitle className="text-muted-foreground text-sm">
+                {courseGradingMethod === "POINTS" ? "No assignments yet" : "No categories yet"}
+              </CardTitle>
             </CardHeader>
-            <CardContent className="overflow-hidden">
+            <CardContent>
+              {courseGradingMethod === "POINTS" ? (
+                <Button variant="outline" onClick={openCreate}>
+                  Add your first assignment
+                </Button>
+              ) : (
+                <Button variant="outline" onClick={() => nav(`/courses/${courseId}/categories`)}>
+                  Add your first category
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="border-slate-200 shadow-lg">
+            <CardContent className="p-6 overflow-hidden">
               <div className="grid grid-cols-12 bg-slate-50 text-sm font-semibold text-slate-600 rounded-t-lg border border-slate-200">
                 <div className="col-span-1 px-4 py-3 flex items-center">
                   <span className="sr-only">Drag</span>
@@ -767,29 +926,30 @@ export default function CoursePage() {
                     onDragStart={() => handleDragStart(assignment.id)}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={() => handleDrop(assignment.id)}
+                    onClick={() => openEditor(assignment)}
                   >
-                    <div className="col-span-1 px-4 py-3 flex items-center text-slate-400">
+                    <div
+                      className="col-span-1 px-4 py-3 flex items-center text-slate-400"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <GripVertical className="h-5 w-5" />
                     </div>
                     <div className="col-span-4 px-4 py-3">
-                      <button
-                        className={`text-left font-semibold transition-colors ${assignment.isDropped ? "text-muted-foreground" : "text-foreground hover:text-primary"}`}
-                        onClick={() => openEditor(assignment)}
-                      >
-                        <span className="flex items-center gap-2">
-                          <span className={assignment.isDropped ? "line-through" : undefined}>{assignment.name}</span>
-                          {assignment.isDropped && (
-                            <Badge className="rounded-full bg-destructive/15 text-destructive border-destructive/40 px-2 py-0.5 text-[10px]">
-                              Dropped
-                            </Badge>
-                          )}
-                          {assignment.isExtraCredit && (
-                            <Badge className="rounded-full bg-success/20 text-success border-success/30 px-2 py-0.5 text-[10px]">
-                              EC
-                            </Badge>
-                          )}
+                      <span className="flex items-center gap-2 text-left font-semibold transition-colors">
+                        <span className={assignment.isDropped ? "line-through text-muted-foreground" : "text-foreground"}>
+                          {assignment.name}
                         </span>
-                      </button>
+                        {assignment.isDropped && (
+                          <Badge className="rounded-full bg-destructive/15 text-destructive border-destructive/40 px-2 py-0.5 text-[10px]">
+                            Dropped
+                          </Badge>
+                        )}
+                        {assignment.isExtraCredit && (
+                          <Badge className="rounded-full bg-success/20 text-success border-success/30 px-2 py-0.5 text-[10px]">
+                            EC
+                          </Badge>
+                        )}
+                      </span>
                     </div>
                     <div
                       className={`col-span-3 px-4 py-3 ${
@@ -868,19 +1028,25 @@ export default function CoursePage() {
             <CardContent className="space-y-2 text-center">
               <p
                 className={`text-3xl font-bold ${
-                  pointsLeftToLose < 10
+                  pointsLeftToLose === null
+                    ? "text-foreground"
+                    : pointsLeftToLose < 10
                     ? "text-destructive"
-                    : pointsLeftToLose < 20
+                    : pointsLeftToLose < 50
                       ? "text-warning"
                       : "text-foreground"
                 }`}
               >
-                {pointsLeftToLose} pts
+                {pointsLeftToLose === null ? "—" : `${pointsLeftToLose} pts`}
               </p>
               <p className="text-sm text-muted-foreground px-2">
-                {pointsLeftToLose === 0
-                  ? "You have lost too many points to reach your target grade."
-                  : "Total points you can still lose and keep your target grade."}
+                {!hasRun
+                  ? "Run the simulation to see your target buffer."
+                  : pointsLeftToLose === null
+                    ? "Add assignments to see your target buffer."
+                    : pointsLeftToLose === 0
+                      ? "You have lost too many points to reach your target grade."
+                      : "Total points you can still lose and keep your target grade."}
               </p>
               {lastRun && (
                 <p className="text-xs font-semibold text-success-foreground bg-success rounded-md px-3 py-2">
@@ -897,7 +1063,17 @@ export default function CoursePage() {
             <CardContent className="space-y-5">
               <div className="flex justify-center">
                 <div className="inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm font-semibold">
-                {pointsLeftToLose > 0 ? (
+                {!hasRun ? (
+                  <>
+                    <AlertTriangle className="h-4 w-4 text-slate-400" />
+                    <span>Run to see status</span>
+                  </>
+                ) : pointsLeftToLose === null ? (
+                  <>
+                    <AlertTriangle className="h-4 w-4 text-slate-400" />
+                    <span>Waiting on grades</span>
+                  </>
+                ) : pointsLeftToLose > 0 ? (
                   <>
                     <CheckCircle2 className="h-4 w-4 text-success" />
                     <span>On Track</span>
@@ -905,7 +1081,7 @@ export default function CoursePage() {
                 ) : (
                   <>
                     <AlertTriangle className="h-4 w-4 text-amber-500" />
-                    <span>Needs attention</span>
+                    <span>At risk</span>
                   </>
                 )}
                 </div>
@@ -919,7 +1095,9 @@ export default function CoursePage() {
                         ? "text-success"
                         : riskLevel === "caution"
                           ? "text-warning"
-                          : "text-destructive"
+                          : riskLevel === "danger"
+                            ? "text-destructive"
+                            : "text-muted-foreground"
                     }`}
                   >
                     {riskLabel}
@@ -928,7 +1106,7 @@ export default function CoursePage() {
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Avg on graded</span>
                   <span className="font-semibold text-foreground">
-                    {gradedAvgPercent === null ? "—" : `${Math.round(gradedAvgPercent * 100)}%`}
+                    {!hasRun || gradedAvgPercent === null ? "—" : `${Math.round(gradedAvgPercent * 100)}%`}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -956,11 +1134,14 @@ export default function CoursePage() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Name</Label>
-                <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                <Input value={form.name} onChange={(e) => handleNameChange(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label>Category</Label>
-                <Select value={form.categoryId} onValueChange={(value) => setForm({ ...form, categoryId: value })}>
+                <Select
+                  value={form.categoryId}
+                  onValueChange={handleCategoryChange}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Pick category" />
                   </SelectTrigger>
@@ -990,7 +1171,7 @@ export default function CoursePage() {
                     type="number"
                     min="0"
                     value={form.max}
-                    onChange={(e) => setForm({ ...form, max: e.target.value })}
+                    onChange={(e) => handleMaxChange(e.target.value)}
                   />
                 </div>
               </div>
@@ -1030,6 +1211,7 @@ export default function CoursePage() {
           code: courseCode,
           credits: courseCredits,
           targetGrade: selectedGrade,
+          gradingMethod: courseGradingMethod,
         }}
       />
 

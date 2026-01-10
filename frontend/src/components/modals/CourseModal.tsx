@@ -30,9 +30,14 @@ export interface CourseFormData {
   code: string;
   credits: number;
   targetGrade: string;
+  gradingMethod: "WEIGHTED" | "POINTS";
 }
 
 const gradeOptions = ["A", "B", "C", "D", "F"];
+const gradingOptions = [
+  { label: "Weighted categories", value: "WEIGHTED" },
+  { label: "Points-based", value: "POINTS" },
+];
 
 export function CourseModal({
   open,
@@ -45,6 +50,7 @@ export function CourseModal({
     code: "",
     credits: 3,
     targetGrade: "A",
+    gradingMethod: "WEIGHTED",
   });
 
   useEffect(() => {
@@ -56,6 +62,7 @@ export function CourseModal({
         code: "",
         credits: 3,
         targetGrade: "A",
+        gradingMethod: "WEIGHTED",
       });
     }
   }, [initialData, open]);
@@ -136,6 +143,29 @@ export function CourseModal({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="gradingMethod">Grading Method</Label>
+              <Select
+                value={formData.gradingMethod}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, gradingMethod: value as CourseFormData["gradingMethod"] })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select method" />
+                </SelectTrigger>
+                <SelectContent>
+                  {gradingOptions.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Points-based ignores category weights and uses total points. This can’t be changed after assignments exist.
+              </p>
             </div>
           </div>
           <DialogFooter>

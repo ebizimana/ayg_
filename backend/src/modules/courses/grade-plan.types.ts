@@ -1,4 +1,5 @@
 export type GradeLetter = 'A' | 'B' | 'C' | 'D' | 'F';
+export type GradingMethod = 'WEIGHTED' | 'POINTS';
 
 export type AssignmentInput = {
   id: string;
@@ -22,6 +23,7 @@ export type CoursePlanInput = {
   id: string;
   name: string;
   desiredLetterGrade: GradeLetter;
+  gradingMethod: GradingMethod;
   categories: CategoryInput[];
 };
 
