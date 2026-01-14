@@ -7,9 +7,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -22,6 +33,8 @@ interface CourseModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: CourseFormData) => void;
+  onDelete?: () => void | Promise<void>;
+  targetGpaLocked?: boolean;
   initialData?: CourseFormData;
 }
 
@@ -31,6 +44,7 @@ export interface CourseFormData {
   credits: number;
   targetGrade: string;
   gradingMethod: "WEIGHTED" | "POINTS";
+  isCompleted?: boolean;
 }
 
 const gradeOptions = ["A", "B", "C", "D", "F"];
@@ -43,6 +57,8 @@ export function CourseModal({
   open,
   onOpenChange,
   onSubmit,
+  onDelete,
+  targetGpaLocked,
   initialData,
 }: CourseModalProps) {
   const [formData, setFormData] = useState<CourseFormData>({
@@ -51,7 +67,9 @@ export function CourseModal({
     credits: 3,
     targetGrade: "A",
     gradingMethod: "WEIGHTED",
+    isCompleted: false,
   });
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   useEffect(() => {
     if (initialData) {
@@ -63,6 +81,7 @@ export function CourseModal({
         credits: 3,
         targetGrade: "A",
         gradingMethod: "WEIGHTED",
+        isCompleted: false,
       });
     }
   }, [initialData, open]);
@@ -71,6 +90,17 @@ export function CourseModal({
     e.preventDefault();
     onSubmit(formData);
     onOpenChange(false);
+  };
+
+  const handleDelete = async () => {
+    if (!onDelete) return;
+    try {
+      await onDelete();
+      setConfirmDeleteOpen(false);
+      onOpenChange(false);
+    } catch {
+      // Keep the dialog open if the delete fails.
+    }
   };
 
   return (
@@ -130,6 +160,7 @@ export function CourseModal({
                   onValueChange={(value) =>
                     setFormData({ ...formData, targetGrade: value })
                   }
+                  disabled={targetGpaLocked}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select grade" />
@@ -142,6 +173,11 @@ export function CourseModal({
                     ))}
                   </SelectContent>
                 </Select>
+                {targetGpaLocked ? (
+                  <p className="text-xs text-muted-foreground">
+                    Target grade is controlled by your GPA setting.
+                  </p>
+                ) : null}
               </div>
             </div>
             <div className="grid gap-2">
@@ -167,17 +203,61 @@ export function CourseModal({
                 Points-based ignores category weights and uses total points. This can’t be changed after assignments exist.
               </p>
             </div>
+            {initialData ? (
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="courseCompleted">Course completed</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Locks the course grade for Target GPA.
+                  </p>
+                </div>
+                <Switch
+                  id="courseCompleted"
+                  checked={!!formData.isCompleted}
+                  onCheckedChange={(checked) =>
+                    setFormData({ ...formData, isCompleted: checked })
+                  }
+                />
+              </div>
+            ) : null}
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit">
-              {initialData ? "Save Changes" : "Add Course"}
-            </Button>
+          <DialogFooter className="flex w-full flex-row items-center justify-between gap-2 sm:justify-between sm:space-x-0">
+            {initialData && onDelete ? (
+              <Button type="button" variant="destructive" onClick={() => setConfirmDeleteOpen(true)}>
+                Delete Course
+              </Button>
+            ) : (
+              <span />
+            )}
+            <div className="flex items-center gap-2">
+              {!initialData ? (
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                  Cancel
+                </Button>
+              ) : null}
+              <Button type="submit">
+                {initialData ? "Save Changes" : "Add Course"}
+              </Button>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>
+      <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this course?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will delete the course and all related categories, assignments, and grades.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={handleDelete}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

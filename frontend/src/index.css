@@ -40,7 +40,7 @@
     --accent-light: 45 93% 58%;
 
     /* Destructive */
-    --destructive: 0 72% 51%;
+    --destructive: 0 37% 49%;
     --destructive-foreground: 0 0% 100%;
 
     /* Success */
@@ -100,7 +100,7 @@
     --accent-foreground: 45 93% 10%;
     --accent-light: 45 93% 68%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 0 37% 49%;
     --destructive-foreground: 0 0% 100%;
 
     --success: 142 76% 46%;

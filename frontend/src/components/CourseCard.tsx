@@ -11,6 +11,7 @@ interface CourseCardProps {
   credits?: number;
   gradingMethod?: "WEIGHTED" | "POINTS";
   isDemo?: boolean;
+  isCompleted?: boolean;
   currentGrade: number | null;
   letterGrade: string;
   targetLetter: string;
@@ -25,6 +26,8 @@ interface CourseCardProps {
   onClick?: () => void;
 }
 
+type RingColor = "success" | "warning" | "destructive" | "primary" | "amber";
+
 function getGradeColor(grade: number): "success" | "warning" | "destructive" | "primary" {
   if (grade >= 90) return "success";
   if (grade >= 80) return "primary";
@@ -32,12 +35,12 @@ function getGradeColor(grade: number): "success" | "warning" | "destructive" | "
   return "destructive";
 }
 
-const gradeTextClasses: Record<string, string> = {
-  A: "text-primary",
-  B: "text-success",
-  C: "text-warning",
-  D: "text-amber-600",
-  F: "text-destructive",
+const letterStyles: Record<string, { textClass: string; ringColor: RingColor }> = {
+  A: { textClass: "text-primary", ringColor: "primary" },
+  B: { textClass: "text-success", ringColor: "success" },
+  C: { textClass: "text-warning", ringColor: "warning" },
+  D: { textClass: "text-amber-600", ringColor: "amber" },
+  F: { textClass: "text-destructive", ringColor: "destructive" },
 };
 
 function getTrendIcon(trend?: "up" | "down" | "stable") {
@@ -57,6 +60,7 @@ export function CourseCard({
   credits,
   gradingMethod,
   isDemo,
+  isCompleted,
   currentGrade,
   letterGrade,
   targetLetter,
@@ -67,8 +71,11 @@ export function CourseCard({
 }: CourseCardProps) {
   const displayGrade = currentGrade ?? 0;
   const gradeColor = getGradeColor(displayGrade);
+  const normalizedLetter = letterGrade?.trim().toUpperCase()[0] ?? "";
+  const letterStyle = letterGrade === "—" ? null : letterStyles[normalizedLetter] ?? null;
+  const ringColor = letterStyle?.ringColor ?? gradeColor;
   const letterClass =
-    letterGrade === "—" ? "text-muted-foreground" : gradeTextClasses[letterGrade] ?? "text-foreground";
+    letterGrade === "—" ? "text-muted-foreground" : letterStyle?.textClass ?? "text-foreground";
   const methodLabel = gradingMethod === "POINTS" ? "Points-based" : gradingMethod === "WEIGHTED" ? "Weighted" : "";
   const pointsLabel = pointsLeftToLose === null || pointsLeftToLose === undefined ? "—" : `${pointsLeftToLose} pts`;
   const pointsColor =
@@ -82,7 +89,7 @@ export function CourseCard({
 
   return (
     <Card 
-      className="group cursor-pointer hover:shadow-lg transition-all duration-300 hover:-translate-y-1 border-border/50"
+      className={`group cursor-pointer border-border/50 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${isCompleted ? "bg-muted/30 opacity-80" : ""}`}
       onClick={onClick}
     >
       <CardHeader className="pb-2 flex flex-row items-start justify-between">
@@ -98,6 +105,11 @@ export function CourseCard({
             {isDemo && (
               <Badge variant="secondary" className="ml-2">
                 Demo
+              </Badge>
+            )}
+            {isCompleted && (
+              <Badge variant="outline" className="ml-2">
+                Completed
               </Badge>
             )}
           </p>
@@ -151,9 +163,9 @@ export function CourseCard({
             <>
               <ProgressRing
                 progress={displayGrade}
-                size={80}
+                size={90}
                 strokeWidth={8}
-                color={gradeColor}
+                color={ringColor}
                 showPercentage={true}
               />
               <div className="flex-1 space-y-2">

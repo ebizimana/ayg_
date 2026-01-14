@@ -54,7 +54,7 @@ export default function Auth() {
           : "Your account has been created. Let's set up your first semester!",
       });
 
-      navigate("/dashboard");
+      navigate("/academic-year");
     } catch (err) {
       toast({
         title: "Authentication failed",

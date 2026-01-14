@@ -7,9 +7,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogDescription,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -22,6 +33,14 @@ interface SemesterModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: SemesterFormData) => void;
+  onDelete?: () => void | Promise<void>;
+  targetGpa?: {
+    enabled: boolean;
+    value?: number | null;
+    locked?: boolean;
+    lockedMessage?: string;
+    onSave: (enabled: boolean, value?: number) => void;
+  };
   initialData?: SemesterFormData;
 }
 
@@ -41,6 +60,8 @@ export function SemesterModal({
   open,
   onOpenChange,
   onSubmit,
+  onDelete,
+  targetGpa,
   initialData,
 }: SemesterModalProps) {
   const [formData, setFormData] = useState<SemesterFormData>(
@@ -60,13 +81,36 @@ export function SemesterModal({
         season: "Fall",
       }
     );
-  }, [open, initialData]);
+    setTargetEnabled(targetGpa?.enabled ?? false);
+    setTargetValue(targetGpa?.value?.toString() ?? "");
+  }, [open, initialData, targetGpa]);
+
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [targetEnabled, setTargetEnabled] = useState(targetGpa?.enabled ?? false);
+  const [targetValue, setTargetValue] = useState(targetGpa?.value?.toString() ?? "");
+  const targetGpaInvalid =
+    !!targetGpa && targetEnabled && (targetValue.trim() === "" || Number.isNaN(Number(targetValue)));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (targetGpaInvalid) return;
     const name = formData.name || `${formData.season} ${formData.year}`;
     onSubmit({ ...formData, name });
+    if (targetGpa) {
+      targetGpa.onSave(targetEnabled, targetEnabled ? Number(targetValue) : undefined);
+    }
     onOpenChange(false);
+  };
+
+  const handleDelete = async () => {
+    if (!onDelete) return;
+    try {
+      await onDelete();
+      setConfirmDeleteOpen(false);
+      onOpenChange(false);
+    } catch {
+      // Keep the dialog open if the delete fails.
+    }
   };
 
   return (
@@ -155,17 +199,79 @@ export function SemesterModal({
                 />
               </div>
             </div>
+            {initialData && targetGpa ? (
+              <div className="grid gap-3 rounded-lg border p-4">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="targetGpaToggle">Set Semester GPA</Label>
+                  <Switch
+                    id="targetGpaToggle"
+                    checked={targetEnabled}
+                    disabled={targetGpa.locked}
+                    onCheckedChange={setTargetEnabled}
+                  />
+                </div>
+                {targetGpa.locked && targetGpa.lockedMessage ? (
+                  <p className="text-xs text-muted-foreground">{targetGpa.lockedMessage}</p>
+                ) : null}
+                {targetEnabled ? (
+                  <div className="grid gap-2">
+                    <Label htmlFor="targetGpaValue">Target GPA</Label>
+                    <Input
+                      id="targetGpaValue"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="4"
+                      value={targetValue}
+                      onChange={(event) => setTargetValue(event.target.value)}
+                      disabled={targetGpa.locked}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button type="submit">
-              {initialData ? "Save Changes" : "Add Semester"}
-            </Button>
+          <DialogFooter className="flex w-full flex-row items-center justify-between gap-2 sm:justify-between sm:space-x-0">
+            {initialData && onDelete ? (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => setConfirmDeleteOpen(true)}
+              >
+                Delete Semester
+              </Button>
+            ) : (
+              <span />
+            )}
+            <div className="flex items-center gap-2">
+              {!initialData ? (
+                <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                  Cancel
+                </Button>
+              ) : null}
+              <Button type="submit" disabled={targetGpaInvalid}>
+                {initialData ? "Save Changes" : "Add Semester"}
+              </Button>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>
+      <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this semester?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will delete the semester and all related courses, categories, assignments, and grades.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={handleDelete}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

@@ -13,6 +13,7 @@ model User {
   password  String
 
   semesters Semester[]
+  targetGpaSessions TargetGpaSession[]
 
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
@@ -27,6 +28,7 @@ model Semester {
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   courses   Course[]
+  targetGpaSessions TargetGpaSession[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -47,12 +49,14 @@ model Course {
   actualPercentGrade Float?
   actualPointsLeftToLose Int?
   gradeFinalizedAt   DateTime?
+  isCompleted        Boolean       @default(false)
   sortOrder          Int           @default(0)
   isDemo             Boolean       @default(false)
 
   semester           Semester      @relation(fields: [semesterId], references: [id], onDelete: Cascade)
   gradingScale       GradingScale? @relation(fields: [gradingScaleId], references: [id], onDelete: SetNull)
   categories         GradeCategory[]
+  targetGpaSnapshots TargetGpaSnapshot[]
 
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
@@ -64,6 +68,46 @@ model Course {
 enum GradingMethod {
   WEIGHTED
   POINTS
+}
+
+enum TargetGpaScope {
+  CAREER
+  YEAR
+  SEMESTER
+}
+
+model TargetGpaSession {
+  id              String          @id @default(uuid())
+  userId          String
+  scope           TargetGpaScope
+  targetGpa       Float
+  yearIndex       Int?
+  semesterId      String?
+  maxAchievableGpa Float?
+  gpaShortfall    Float?
+  createdAt       DateTime        @default(now())
+  disabledAt      DateTime?
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  semester        Semester?       @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  snapshots       TargetGpaSnapshot[]
+
+  @@index([userId])
+  @@index([scope])
+  @@index([semesterId])
+}
+
+model TargetGpaSnapshot {
+  id                         String           @id @default(uuid())
+  sessionId                  String
+  courseId                   String
+  previousDesiredLetterGrade String
+
+  session                    TargetGpaSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  course                     Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([courseId])
 }
 
 model GradingScale {

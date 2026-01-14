@@ -4,10 +4,11 @@ import { CreateCourseDto } from './dto/create-course.dto';
 import { UpdateCourseDto } from './dto/update-course.dto';
 import { computeCoursePlan } from './grade-plan.util';
 import { GradePlanQueryDto } from './dto/grade-plan.dto';
+import { TargetGpaService } from '../target-gpa/target-gpa.service';
 
 @Injectable()
 export class CoursesService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService, private targetGpaService: TargetGpaService) { }
 
   private async assertSemesterOwnership(userId: string, semesterId: string) {
     const semester = await this.prisma.semester.findFirst({
@@ -32,8 +33,9 @@ export class CoursesService {
 
   async create(userId: string, semesterId: string, dto: CreateCourseDto) {
     await this.assertSemesterOwnership(userId, semesterId);
+    const activeTarget = await this.targetGpaService.getActiveSession(userId);
 
-    return this.prisma.$transaction(async (tx) => {
+    const course = await this.prisma.$transaction(async (tx) => {
       const maxOrder = await tx.course.aggregate({
         where: { semesterId },
         _max: { sortOrder: true },
@@ -46,11 +48,12 @@ export class CoursesService {
           code: dto.code ?? '',
           name: dto.name,
           credits: dto.credits,
-          desiredLetterGrade: dto.desiredLetterGrade,
+          desiredLetterGrade: activeTarget ? 'D' : dto.desiredLetterGrade,
           gradingMethod: dto.gradingMethod ?? 'WEIGHTED',
           gradingScaleId: dto.gradingScaleId ?? null,
           sortOrder,
           isDemo: dto.isDemo ?? false,
+          isCompleted: dto.isCompleted ?? false,
         },
       });
 
@@ -68,6 +71,12 @@ export class CoursesService {
 
       return course;
     });
+
+    if (activeTarget) {
+      await this.targetGpaService.recomputeForCourseChange(userId, semesterId);
+    }
+
+    return course;
   }
 
   async findAllForSemester(userId: string, semesterId: string) {
@@ -131,7 +140,7 @@ export class CoursesService {
   }
 
   async update(userId: string, courseId: string, dto: UpdateCourseDto) {
-    await this.assertCourseOwnership(userId, courseId);
+    const course = await this.assertCourseOwnership(userId, courseId);
 
     if (dto.gradingMethod !== undefined) {
       const existing = await this.prisma.course.findUnique({
@@ -145,6 +154,13 @@ export class CoursesService {
         if (assignmentCount > 0) {
           throw new ForbiddenException('Cannot change grading method after assignments exist.');
         }
+      }
+    }
+
+    if (dto.desiredLetterGrade !== undefined) {
+      const activeTarget = await this.targetGpaService.getActiveSession(userId);
+      if (activeTarget) {
+        throw new ForbiddenException('Cannot change target grade while Target GPA is enabled.');
       }
     }
 
@@ -163,6 +179,7 @@ export class CoursesService {
         ...(dto.gradeFinalizedAt !== undefined
           ? { gradeFinalizedAt: dto.gradeFinalizedAt ? new Date(dto.gradeFinalizedAt) : null }
           : {}),
+        ...(dto.isCompleted !== undefined ? { isCompleted: dto.isCompleted } : {}),
 
       },
     });
@@ -182,12 +199,22 @@ export class CoursesService {
       }
     }
 
+    if (
+      dto.credits !== undefined ||
+      dto.actualLetterGrade !== undefined ||
+      dto.isCompleted !== undefined
+    ) {
+      await this.targetGpaService.recomputeForCourseChange(userId, course.semesterId);
+    }
+
     return updated;
   }
 
   async remove(userId: string, courseId: string) {
-    await this.assertCourseOwnership(userId, courseId);
-    return this.prisma.course.delete({ where: { id: courseId } });
+    const course = await this.assertCourseOwnership(userId, courseId);
+    const removed = await this.prisma.course.delete({ where: { id: courseId } });
+    await this.targetGpaService.recomputeForCourseChange(userId, course.semesterId);
+    return removed;
   }
 
   async updateOrder(userId: string, semesterId: string, orderedIds: string[]) {

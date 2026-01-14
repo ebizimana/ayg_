@@ -8,9 +8,20 @@ import { CoursesModule } from './modules/courses/courses.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { AssignmentsModule } from './modules/assignments/assignments.module';
 import { GradesModule } from './modules/grades/grades.module';
+import { TargetGpaModule } from './modules/target-gpa/target-gpa.module';
 
 @Module({
-  imports: [PrismaModule, UsersModule, AuthModule, SemestersModule, CoursesModule, CategoriesModule, AssignmentsModule, GradesModule],
+  imports: [
+    PrismaModule,
+    UsersModule,
+    AuthModule,
+    SemestersModule,
+    CoursesModule,
+    CategoriesModule,
+    AssignmentsModule,
+    GradesModule,
+    TargetGpaModule,
+  ],
   controllers: [HealthController],
 })
 export class AppModule {}

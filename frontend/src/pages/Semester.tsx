@@ -6,13 +6,12 @@ import { ProgressRing } from "@/components/ProgressRing";
 import { CourseCard } from "@/components/CourseCard";
 import { StatCard } from "@/components/StatCard";
 import {
-  SemesterModal,
   CourseModal,
-  type SemesterFormData,
   type CourseFormData,
   CategoryModal,
   AssignmentModal,
   GradeModal,
+  TargetGpaModal,
   type CategoryFormData,
   type AssignmentFormData,
   type GradeFormData,
@@ -57,6 +56,7 @@ type Course = {
   actualPointsLeftToLose?: number | null;
   sortOrder?: number;
   isDemo?: boolean;
+  isCompleted?: boolean;
 };
 type Category = { id: string; name: string; weightPercent?: number; dropLowest?: number };
 type Assignment = {
@@ -68,7 +68,7 @@ type Assignment = {
   categoryId: string;
   categoryName?: string;
 };
-type ModalType = "semester" | "course" | "category" | "assignment" | "grade" | null;
+type ModalType = "course" | "category" | "assignment" | "grade" | null;
 type DemoAssignment = { name: string; maxPoints: number; dueDate?: string; isExtraCredit?: boolean; earnedPoints?: number };
 type DemoCourse = {
   name: string;
@@ -79,35 +79,18 @@ type DemoCourse = {
   categories: { name: string; weightPercent: number; dropLowest?: number }[];
   assignments: (DemoAssignment & { categoryName: string })[];
 };
+type TargetGpaSession = {
+  id: string;
+  scope: "CAREER" | "YEAR" | "SEMESTER";
+  targetGpa: number;
+  yearIndex?: number | null;
+  semesterId?: string | null;
+  maxAchievableGpa?: number | null;
+  gpaShortfall?: number | null;
+};
 
 const semesterSeasons = ["Fall", "Spring", "Summer", "Winter"];
-
-const seasonDates = (season: string, yearStr: string) => {
-  const year = Number(yearStr) || new Date().getFullYear();
-  switch (season) {
-    case "Spring":
-      return {
-        startDate: new Date(`${year}-01-15`).toISOString(),
-        endDate: new Date(`${year}-05-15`).toISOString(),
-      };
-    case "Summer":
-      return {
-        startDate: new Date(`${year}-05-20`).toISOString(),
-        endDate: new Date(`${year}-08-20`).toISOString(),
-      };
-    case "Winter":
-      return {
-        startDate: new Date(`${year}-12-15`).toISOString(),
-        endDate: new Date(`${year + 1}-01-20`).toISOString(),
-      };
-    case "Fall":
-    default:
-      return {
-        startDate: new Date(`${year}-08-20`).toISOString(),
-        endDate: new Date(`${year}-12-20`).toISOString(),
-      };
-  }
-};
+const yearLabels = ["Freshman", "Sophomore", "Junior", "Senior"];
 
 const parseSemesterName = (name: string) => {
   const [maybeSeason, maybeYear] = name.split(" ");
@@ -127,22 +110,24 @@ export default function Semester() {
   const [selectedSemesterId, setSelectedSemesterId] = useState<string | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
+  const [hoveredCourseId, setHoveredCourseId] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
-  const [editingSemester, setEditingSemester] = useState<Semester | null>(null);
   const [draggingCourseId, setDraggingCourseId] = useState<string | null>(null);
   const lastCourseDropRef = useRef<number>(0);
+  const [targetGpaSession, setTargetGpaSession] = useState<TargetGpaSession | null>(null);
+  const [semesterTargetModalOpen, setSemesterTargetModalOpen] = useState(false);
 
   const token = useMemo(() => localStorage.getItem("ayg_token"), []);
-  const activeSemester = useMemo(
-    () => semesters.find((semester) => semester.id === selectedSemesterId) ?? null,
-    [semesters, selectedSemesterId],
-  );
   const activeCourse = useMemo(
     () => courses.find((course) => course.id === selectedCourseId),
     [courses, selectedCourseId],
+  );
+  const hoveredCourse = useMemo(
+    () => courses.find((course) => course.id === hoveredCourseId) ?? null,
+    [courses, hoveredCourseId],
   );
   const sortedCourses = useMemo(() => {
     const list = [...courses];
@@ -156,6 +141,7 @@ export default function Semester() {
       return;
     }
     loadSemesters();
+    loadTargetGpaSession();
   }, [token]);
 
   useEffect(() => {
@@ -186,6 +172,19 @@ export default function Semester() {
     }
   };
 
+  const loadTargetGpaSession = async () => {
+    try {
+      const session = await http<TargetGpaSession | null>("/target-gpa/active");
+      setTargetGpaSession(session ?? null);
+    } catch (err) {
+      toast({
+        title: "Failed to load target GPA",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const loadCourses = async (semesterId: string) => {
     try {
       const data = await http<Course[]>(`/semesters/${semesterId}/courses`);
@@ -208,11 +207,7 @@ export default function Semester() {
   };
 
   const handleModalSubmit = (type: ModalType, data: unknown) => {
-    if (type === "semester") {
-      if (editingSemester) updateSemester(editingSemester.id, data as SemesterFormData);
-      else createSemester(data as SemesterFormData);
-    }
-    else if (type === "course") {
+    if (type === "course") {
       if (editingCourse) updateCourse(editingCourse.id, data as CourseFormData);
       else createCourse(data as CourseFormData);
     }
@@ -220,61 +215,6 @@ export default function Semester() {
     else if (type === "assignment") createAssignment(data as AssignmentFormData);
     else {
       toast({ title: "Coming soon", description: "Grades not wired yet." });
-    }
-  };
-
-  const createSemester = async (form: SemesterFormData) => {
-    setLoading(true);
-    try {
-      const name = form.name || `${form.season} ${form.year}`;
-      const dates = seasonDates(form.season, form.year);
-      const payload = {
-        name,
-        startDate: form.startDate || dates.startDate,
-        endDate: form.endDate || dates.endDate,
-      };
-      const created = await http<Semester>("/semesters", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-      setSemesters((prev) => [created, ...prev]);
-      setSelectedSemesterId(created.id);
-      toast({ title: "Semester added", description: created.name });
-    } catch (err) {
-      toast({
-        title: "Failed to add semester",
-        description: err instanceof Error ? err.message : "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const updateSemester = async (semesterId: string, form: SemesterFormData) => {
-    setLoading(true);
-    try {
-      const name = form.name || `${form.season} ${form.year}`;
-      const dates = seasonDates(form.season, form.year);
-      const payload = {
-        name,
-        startDate: form.startDate || dates.startDate,
-        endDate: form.endDate || dates.endDate,
-      };
-      const updated = await http<Semester>(`/semesters/${semesterId}`, {
-        method: "PATCH",
-        body: JSON.stringify(payload),
-      });
-      setSemesters((prev) => prev.map((semester) => (semester.id === semesterId ? updated : semester)));
-      toast({ title: "Semester updated", description: updated.name });
-    } catch (err) {
-      toast({
-        title: "Failed to update semester",
-        description: err instanceof Error ? err.message : "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -288,12 +228,18 @@ export default function Semester() {
         credits: form.credits,
         desiredLetterGrade: form.targetGrade,
         gradingMethod: form.gradingMethod,
+        isCompleted: form.isCompleted ?? false,
       };
       const created = await http<Course>(`/semesters/${selectedSemesterId}/courses`, {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      setCourses((prev) => [created, ...prev]);
+      if (targetGpaLockedForCourses) {
+        await loadCourses(selectedSemesterId);
+      } else {
+        setCourses((prev) => [created, ...prev]);
+      }
+      await loadTargetGpaSession();
       toast({ title: "Course added", description: created.name });
     } catch (err) {
       toast({
@@ -309,18 +255,33 @@ export default function Semester() {
   const updateCourse = async (courseId: string, form: CourseFormData) => {
     setLoading(true);
     try {
-      const payload = {
+      const payload: {
+        name: string;
+        code: string;
+        credits: number;
+        gradingMethod: CourseFormData["gradingMethod"];
+        desiredLetterGrade?: string;
+        isCompleted: boolean;
+      } = {
         name: form.name,
         code: form.code,
         credits: form.credits,
-        desiredLetterGrade: form.targetGrade,
         gradingMethod: form.gradingMethod,
+        isCompleted: form.isCompleted ?? false,
       };
+      if (!targetGpaLockedForCourses) {
+        payload.desiredLetterGrade = form.targetGrade;
+      }
       const updated = await http<Course>(`/courses/${courseId}`, {
         method: "PATCH",
         body: JSON.stringify(payload),
       });
-      setCourses((prev) => prev.map((c) => (c.id === courseId ? updated : c)));
+      if (targetGpaLockedForCourses && selectedSemesterId) {
+        await loadCourses(selectedSemesterId);
+      } else {
+        setCourses((prev) => prev.map((c) => (c.id === courseId ? updated : c)));
+      }
+      await loadTargetGpaSession();
       toast({ title: "Course updated", description: updated.name });
     } catch (err) {
       toast({
@@ -331,6 +292,58 @@ export default function Semester() {
     } finally {
       setLoading(false);
       setEditingCourse(null);
+    }
+  };
+
+  const deleteCourse = async (courseId: string) => {
+    if (!selectedSemesterId) return;
+    setLoading(true);
+    try {
+      await http(`/courses/${courseId}`, { method: "DELETE" });
+      await loadCourses(selectedSemesterId);
+      await loadTargetGpaSession();
+      toast({ title: "Course deleted" });
+    } catch (err) {
+      toast({
+        title: "Failed to delete course",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSemesterTargetSave = async (enabled: boolean, value?: number) => {
+    if (!selectedSemesterId) return;
+    setLoading(true);
+    try {
+      if (enabled && value !== undefined) {
+        await http("/target-gpa/enable", {
+          method: "POST",
+          body: JSON.stringify({
+            scope: "SEMESTER",
+            targetGpa: value,
+            semesterId: selectedSemesterId,
+          }),
+        });
+      } else {
+        await http("/target-gpa/disable", {
+          method: "POST",
+          body: JSON.stringify({ scope: "SEMESTER", semesterId: selectedSemesterId }),
+        });
+      }
+      await loadTargetGpaSession();
+      await loadCourses(selectedSemesterId);
+    } catch (err) {
+      toast({
+        title: "Failed to update semester target GPA",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -494,7 +507,59 @@ export default function Semester() {
 
   const totalCredits = courses.reduce((sum, c) => sum + c.credits, 0);
   const courseCount = courses.length;
+  const gradedCourseCount = courses.filter(
+    (c) => c.actualPercentGrade !== null && c.actualPercentGrade !== undefined,
+  ).length;
+  const ungradedCourseCount = Math.max(courseCount - gradedCourseCount, 0);
   const semesterName = semesters.find((s) => s.id === selectedSemesterId)?.name ?? "Select semester";
+  const yearContext = useMemo(() => {
+    if (!selectedSemesterId || !semesters.length) {
+      return { label: "Academic Year", index: null as number | null };
+    }
+    const sorted = [...semesters].sort(
+      (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
+    );
+    const groups: Semester[][] = [];
+    let current: Semester[] = [];
+    sorted.forEach((semester) => {
+      const { season } = parseSemesterName(semester.name);
+      if (season === "Fall" && current.length > 0) {
+        groups.push(current);
+        current = [];
+      }
+      current.push(semester);
+    });
+    if (current.length) groups.push(current);
+    if (groups.length > yearLabels.length) {
+      const overflow = groups.slice(yearLabels.length - 1).flat();
+      groups.splice(yearLabels.length - 1);
+      groups.push(overflow);
+    }
+    const index = groups.findIndex((group) => group.some((semester) => semester.id === selectedSemesterId));
+    return {
+      label: yearLabels[index] ?? "Academic Year",
+      index: index >= 0 ? index : null,
+    };
+  }, [semesters, selectedSemesterId]);
+  const yearLabel = yearContext.label;
+  const semesterTargetActive =
+    targetGpaSession?.scope === "SEMESTER" && targetGpaSession.semesterId === selectedSemesterId;
+  const semesterTargetLocked = !!targetGpaSession && !semesterTargetActive;
+  const targetGpaLockedMessage = targetGpaSession
+    ? targetGpaSession.scope === "CAREER"
+      ? "Career Target GPA is already active."
+      : targetGpaSession.scope === "YEAR"
+        ? "Year Target GPA is already active."
+        : "Semester Target GPA is already active."
+    : "";
+  const targetGpaLockedForCourses =
+    targetGpaSession?.scope === "CAREER" ||
+    (targetGpaSession?.scope === "SEMESTER" && targetGpaSession.semesterId === selectedSemesterId) ||
+    (targetGpaSession?.scope === "YEAR" && targetGpaSession.yearIndex === yearContext.index);
+  const semesterTargetShortfall =
+    semesterTargetActive ? targetGpaSession?.gpaShortfall ?? null : null;
+  const semesterTargetMax =
+    semesterTargetActive ? targetGpaSession?.maxAchievableGpa ?? null : null;
 
   const signOut = () => {
     localStorage.clear();
@@ -546,6 +611,55 @@ export default function Semester() {
     );
     return weighted / total;
   }, [courses]);
+
+  const riskCourseCount = useMemo(() => {
+    return courses.filter((course) => {
+      if (!course.actualLetterGrade) return false;
+      const actual = letterToGpa(course.actualLetterGrade);
+      const target = letterToGpa(course.desiredLetterGrade);
+      if (actual === null || target === null) return false;
+      return actual < target;
+    }).length;
+  }, [courses]);
+
+  const letterMix = useMemo(() => {
+    const mix = { A: 0, B: 0, C: 0, D: 0, F: 0 };
+    let skipped = 0;
+    for (const course of courses) {
+      const letter = course.actualLetterGrade;
+      if (!letter) {
+        skipped += 1;
+        continue;
+      }
+      const normalized = letter.trim().toUpperCase()[0] as keyof typeof mix;
+      if (mix[normalized] === undefined) {
+        skipped += 1;
+        continue;
+      }
+      mix[normalized] += 1;
+    }
+    return { mix, skipped };
+  }, [courses]);
+  const letterMixTotal = useMemo(
+    () => Object.values(letterMix.mix).reduce((sum, value) => sum + value, 0),
+    [letterMix],
+  );
+
+  const hoveredCoursePercentDisplay =
+    hoveredCourse?.actualPercentGrade === null || hoveredCourse?.actualPercentGrade === undefined
+      ? "—"
+    : `${Math.round(hoveredCourse.actualPercentGrade)}%`;
+  const hoveredCourseLetter = hoveredCourse?.actualLetterGrade ?? "—";
+  const hoveredCoursePointsDisplay =
+    hoveredCourse?.actualPointsLeftToLose === null || hoveredCourse?.actualPointsLeftToLose === undefined
+      ? "—"
+      : `${hoveredCourse.actualPointsLeftToLose} pts`;
+  const hoveredCourseMethodLabel =
+    hoveredCourse?.gradingMethod === "POINTS"
+      ? "Points-based"
+      : hoveredCourse?.gradingMethod === "WEIGHTED"
+        ? "Weighted"
+        : "—";
 
   const randInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
   const sample = <T,>(list: T[]) => list[randInt(0, list.length - 1)];
@@ -821,31 +935,13 @@ export default function Semester() {
                 </div>
                 <span className="text-xl font-bold text-foreground hidden sm:block">AYG</span>
               </Link>
-              
-              {/* Semester Selector */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="gap-2">
-                    <Calendar className="h-4 w-4" />
-                    <span className="hidden sm:inline">{semesterName}</span>
-                    <ChevronDown className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuLabel>Select Semester</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {semesters.map((sem) => (
-                    <DropdownMenuItem key={sem.id} onClick={() => setSelectedSemesterId(sem.id)}>
-                      {sem.name}
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setActiveModal("semester")}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Semester
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+
+              <span className="text-muted-foreground">›</span>
+              <Link to="/academic-year" className="text-sm font-semibold text-foreground hover:text-primary">
+                {yearLabel}
+              </Link>
+              <span className="text-muted-foreground">›</span>
+              <span className="text-sm font-semibold text-foreground">{semesterName}</span>
             </div>
 
             {/* Desktop Actions */}
@@ -952,6 +1048,8 @@ export default function Semester() {
                   key={course.id}
                   className={draggingCourseId === course.id ? "opacity-75" : ""}
                   draggable
+                  onMouseEnter={() => setHoveredCourseId(course.id)}
+                  onMouseLeave={() => setHoveredCourseId(null)}
                   onDragStart={() => setDraggingCourseId(course.id)}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => handleCourseDrop(course.id)}
@@ -972,6 +1070,7 @@ export default function Semester() {
                     credits={course.credits}
                     gradingMethod={course.gradingMethod}
                     isDemo={course.isDemo}
+                    isCompleted={course.isCompleted}
                     currentGrade={course.actualPercentGrade ?? null}
                     letterGrade={course.actualLetterGrade ?? "—"}
                     targetLetter={course.desiredLetterGrade}
@@ -1045,7 +1144,7 @@ export default function Semester() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="flex items-center gap-4">
-                <ProgressRing progress={semesterPercent ?? 0} size={90} color="primary" />
+                <ProgressRing progress={semesterPercent ?? 0} size={100} color="primary" />
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Semester average</p>
                   <p className="text-2xl font-bold text-foreground">
@@ -1071,26 +1170,11 @@ export default function Semester() {
                 <Button
                   variant="outline"
                   className="w-full justify-start gap-2"
-                  onClick={() => {
-                    setEditingSemester(null);
-                    setActiveModal("semester");
-                  }}
+                  onClick={() => setSemesterTargetModalOpen(true)}
+                  disabled={!selectedSemesterId}
                 >
-                  <Calendar className="h-4 w-4 text-primary" />
-                  Add Semester
-                </Button>
-                <Button
-                  variant="outline"
-                  className="w-full justify-start gap-2"
-                  onClick={() => {
-                    if (!activeSemester) return;
-                    setEditingSemester(activeSemester);
-                    setActiveModal("semester");
-                  }}
-                  disabled={!activeSemester}
-                >
-                  <Calendar className="h-4 w-4 text-primary" />
-                  Edit Semester
+                  <Target className="h-4 w-4 text-primary" />
+                  Set Semester GPA
                 </Button>
                 <Button
                   variant="outline"
@@ -1135,6 +1219,26 @@ export default function Semester() {
               </CardContent>
             </Card>
 
+            {semesterTargetMax !== null && semesterTargetShortfall !== null ? (
+              <Card className="border-slate-200 bg-slate-50/60">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Target className="h-5 w-5 text-primary" />
+                    Target GPA status
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <p className="text-sm text-muted-foreground">
+                    You lost too many points to achieve your GPA.
+                  </p>
+                  <div className="flex flex-wrap gap-4 text-sm font-semibold text-slate-700">
+                    <span>Max achievable GPA: {semesterTargetMax.toFixed(2)}</span>
+                    <span>Shortfall: {semesterTargetShortfall.toFixed(2)}</span>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+
             <Card className="bg-primary/5 border-primary/20">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center gap-2">
@@ -1143,17 +1247,125 @@ export default function Semester() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {categories.length === 0 && <p className="text-sm text-muted-foreground">Add categories to see insights.</p>}
-                {categories.length > 0 && assignments.length === 0 && (
-                  <p className="text-sm text-muted-foreground">Add assignments to see insights.</p>
-                )}
-                {assignments.length > 0 && (
-                  <div className="p-3 rounded-lg bg-background border border-border/50">
-                    <p className="text-sm font-medium text-foreground">Tracking in progress</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {assignments.length} assignments across {categories.length} categories.
-                    </p>
-                  </div>
+                {hoveredCourse ? (
+                  <>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          {hoveredCourse.code ?? hoveredCourse.name}
+                        </p>
+                        {hoveredCourse.code && (
+                          <p className="text-xs text-muted-foreground mt-1">{hoveredCourse.name}</p>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground">{hoveredCourse.credits} credits</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-3 rounded-lg bg-background border border-border/50">
+                        <p className="text-xs text-muted-foreground">Current grade</p>
+                        <p className="text-base font-semibold text-foreground">{hoveredCoursePercentDisplay}</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-background border border-border/50">
+                        <p className="text-xs text-muted-foreground">Letter grade</p>
+                        <p className="text-base font-semibold text-foreground">{hoveredCourseLetter}</p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-background border border-border/50">
+                        <p className="text-xs text-muted-foreground">Target grade</p>
+                        <p className="text-base font-semibold text-foreground">
+                          {hoveredCourse.desiredLetterGrade}
+                        </p>
+                      </div>
+                      <div className="p-3 rounded-lg bg-background border border-border/50">
+                        <p className="text-xs text-muted-foreground">Grading method</p>
+                        <p className="text-base font-semibold text-foreground">{hoveredCourseMethodLabel}</p>
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-lg bg-background border border-border/50">
+                      <p className="text-xs text-muted-foreground">Points left to lose</p>
+                      <p className="text-base font-semibold text-foreground">{hoveredCoursePointsDisplay}</p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {courseCount === 0 && (
+                      <p className="text-sm text-muted-foreground">Add courses to see semester insights.</p>
+                    )}
+                    {courseCount > 0 && (
+                      <>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="p-3 rounded-lg bg-background border border-border/50">
+                            <p className="text-xs text-muted-foreground">Semester average</p>
+                            <p className="text-base font-semibold text-foreground">
+                              {semesterPercent === null ? "—" : `${Math.round(semesterPercent)}%`}
+                            </p>
+                          </div>
+                          <div className="p-3 rounded-lg bg-background border border-border/50">
+                            <p className="text-xs text-muted-foreground">Graded courses</p>
+                            <p className="text-base font-semibold text-foreground">
+                              {gradedCourseCount}/{courseCount}
+                            </p>
+                          </div>
+                          <div className="p-3 rounded-lg bg-background border border-border/50">
+                            <p className="text-xs text-muted-foreground">At-risk courses</p>
+                            <p className="text-base font-semibold text-foreground">{riskCourseCount}</p>
+                          </div>
+                          <div className="p-3 rounded-lg bg-background border border-border/50">
+                            <p className="text-xs text-muted-foreground">Target GPA</p>
+                            <p className="text-base font-semibold text-foreground">
+                              {targetGpa === null ? "—" : targetGpa.toFixed(2)}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="p-3 rounded-lg bg-background border border-border/50">
+                          <p className="text-xs text-muted-foreground">Letter mix (A/B/C/D/F)</p>
+                          <div className="mt-2">
+                            <div className="h-3 w-full rounded-full bg-muted/40 overflow-hidden flex">
+                              {letterMixTotal > 0 ? (
+                                <>
+                                  {(
+                                    [
+                                      ["A", "bg-primary"],
+                                      ["B", "bg-success"],
+                                      ["C", "bg-warning"],
+                                      ["D", "bg-amber-600"],
+                                      ["F", "bg-destructive"],
+                                    ] as const
+                                  ).map(([letter, colorClass]) => {
+                                    const value = letterMix.mix[letter];
+                                    if (!value) return null;
+                                    const width = (value / letterMixTotal) * 100;
+                                    return (
+                                      <span
+                                        key={letter}
+                                        className={colorClass}
+                                        style={{ width: `${width}%` }}
+                                      />
+                                    );
+                                  })}
+                                </>
+                              ) : (
+                                <span className="w-full bg-muted/60" />
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-2">
+                              A {letterMix.mix.A} • B {letterMix.mix.B} • C {letterMix.mix.C} • D {letterMix.mix.D} •
+                              F {letterMix.mix.F}
+                            </p>
+                          </div>
+                          {letterMix.skipped > 0 && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {letterMix.skipped} course{letterMix.skipped === 1 ? "" : "s"} skipped (no letter grade).
+                            </p>
+                          )}
+                        </div>
+                        {ungradedCourseCount > 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            {ungradedCourseCount} course{ungradedCourseCount === 1 ? "" : "s"} still need grades.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </>
                 )}
               </CardContent>
             </Card>
@@ -1162,26 +1374,6 @@ export default function Semester() {
       </main>
 
       {/* Modals */}
-      <SemesterModal
-        open={activeModal === "semester"}
-        onOpenChange={(open) => {
-          if (!open) {
-            setActiveModal(null);
-            setEditingSemester(null);
-          }
-        }}
-        onSubmit={(data: SemesterFormData) => handleModalSubmit("semester", data)}
-        initialData={
-          editingSemester
-            ? {
-                name: editingSemester.name,
-                ...parseSemesterName(editingSemester.name),
-                startDate: editingSemester.startDate,
-                endDate: editingSemester.endDate,
-              }
-            : undefined
-        }
-      />
       <CourseModal
         open={activeModal === "course"}
         onOpenChange={(open) => {
@@ -1191,6 +1383,12 @@ export default function Semester() {
           }
         }}
         onSubmit={(data: CourseFormData) => handleModalSubmit("course", data)}
+        targetGpaLocked={!!targetGpaLockedForCourses}
+        onDelete={
+          editingCourse
+            ? () => deleteCourse(editingCourse.id)
+            : undefined
+        }
         initialData={
           editingCourse
             ? {
@@ -1199,9 +1397,22 @@ export default function Semester() {
                 credits: editingCourse.credits,
                 targetGrade: editingCourse.desiredLetterGrade,
                 gradingMethod: editingCourse.gradingMethod ?? "WEIGHTED",
+                isCompleted: editingCourse.isCompleted ?? false,
               }
             : undefined
         }
+      />
+      <TargetGpaModal
+        open={semesterTargetModalOpen}
+        onOpenChange={setSemesterTargetModalOpen}
+        title="Set Semester GPA"
+        description="Control target grades for this semester."
+        toggleLabel="Set Semester GPA"
+        enabled={semesterTargetActive}
+        targetGpa={semesterTargetActive ? targetGpaSession?.targetGpa ?? null : null}
+        locked={semesterTargetLocked}
+        lockedMessage={semesterTargetLocked ? targetGpaLockedMessage : undefined}
+        onSave={handleSemesterTargetSave}
       />
       <CategoryModal
         open={activeModal === "category"}

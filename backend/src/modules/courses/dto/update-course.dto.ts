@@ -1,4 +1,4 @@
-import { IsDateString, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsInt, IsNotEmpty, IsNumber, IsOptional, IsString } from 'class-validator';
 
 export class UpdateCourseDto {
   @IsOptional()
@@ -43,5 +43,9 @@ export class UpdateCourseDto {
   @IsOptional()
   @IsDateString()
   gradeFinalizedAt?: string | null; // ISO string
+
+  @IsOptional()
+  @IsBoolean()
+  isCompleted?: boolean;
 
 }

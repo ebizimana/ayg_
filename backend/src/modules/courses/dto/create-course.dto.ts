@@ -27,4 +27,8 @@ export class CreateCourseDto {
   @IsOptional()
   @IsBoolean()
   isDemo?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isCompleted?: boolean;
 }

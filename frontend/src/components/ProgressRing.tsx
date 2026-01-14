@@ -7,7 +7,7 @@ interface ProgressRingProps {
   className?: string;
   showPercentage?: boolean;
   label?: string;
-  color?: "primary" | "success" | "warning" | "destructive";
+  color?: "primary" | "success" | "warning" | "destructive" | "amber";
 }
 
 const colorMap = {
@@ -15,6 +15,7 @@ const colorMap = {
   success: "stroke-success",
   warning: "stroke-warning",
   destructive: "stroke-destructive",
+  amber: "stroke-amber-600",
 };
 
 const bgColorMap = {
@@ -22,6 +23,7 @@ const bgColorMap = {
   success: "stroke-success/20",
   warning: "stroke-warning/20",
   destructive: "stroke-destructive/20",
+  amber: "stroke-amber-600/20",
 };
 
 export function ProgressRing({
@@ -35,7 +37,8 @@ export function ProgressRing({
 }: ProgressRingProps) {
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
-  const offset = circumference - (progress / 100) * circumference;
+  const clampedProgress = Math.min(Math.max(progress, 0), 100);
+  const offset = circumference - (clampedProgress / 100) * circumference;
 
   return (
     <div className={cn("relative inline-flex items-center justify-center", className)}>

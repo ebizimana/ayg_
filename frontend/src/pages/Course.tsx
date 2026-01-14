@@ -25,6 +25,7 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
+  AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -82,14 +83,23 @@ type CourseResponse = {
   actualPointsLeftToLose?: number | null;
   gradeFinalizedAt?: string | null;
   code?: string;
+  isCompleted?: boolean;
+  semesterId?: string;
 };
-type SemesterResponse = { id: string; name: string };
+type SemesterResponse = { id: string; name: string; startDate: string };
 type Category = { id: string; name: string; weightPercent: number; dropLowest?: number; assignmentsCount?: number };
 type GradePlan = {
   actualPercent: number | null;
   projectedPercent: number | null;
   requirements: { id: string; requiredPoints: number }[];
   droppedAssignmentIds: string[];
+};
+type TargetGpaSession = {
+  id: string;
+  scope: "CAREER" | "YEAR" | "SEMESTER";
+  targetGpa: number;
+  yearIndex?: number | null;
+  semesterId?: string | null;
 };
 
 const gradeTargets: Record<string, number> = {
@@ -101,6 +111,8 @@ const gradeTargets: Record<string, number> = {
 };
 
 const LAST_SEMESTER_KEY = "ayg_last_semester_id";
+const semesterSeasons = ["Fall", "Spring", "Summer", "Winter"];
+const yearLabels = ["Freshman", "Sophomore", "Junior", "Senior"];
 
 const gradeBadgeClasses: Record<string, string> = {
   A: "from-primary to-primary-dark",
@@ -111,6 +123,40 @@ const gradeBadgeClasses: Record<string, string> = {
 };
 
 const options = ["A", "B", "C", "D", "F"];
+
+const parseSemesterName = (name: string) => {
+  const [maybeSeason] = name.split(" ");
+  const season = semesterSeasons.includes(maybeSeason) ? maybeSeason : "Fall";
+  return { season };
+};
+
+const groupSemesters = (semesters: SemesterResponse[]) => {
+  const sorted = [...semesters].sort(
+    (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
+  );
+  const groups: SemesterResponse[][] = [];
+  let current: SemesterResponse[] = [];
+  sorted.forEach((semester) => {
+    const { season } = parseSemesterName(semester.name);
+    if (season === "Fall" && current.length > 0) {
+      groups.push(current);
+      current = [];
+    }
+    current.push(semester);
+  });
+  if (current.length) groups.push(current);
+  if (groups.length > yearLabels.length) {
+    const overflow = groups.slice(yearLabels.length - 1).flat();
+    return [...groups.slice(0, yearLabels.length - 1), overflow];
+  }
+  return groups;
+};
+
+const getYearIndexForSemester = (semesters: SemesterResponse[], semesterId: string) => {
+  const groups = groupSemesters(semesters);
+  const index = groups.findIndex((group) => group.some((semester) => semester.id === semesterId));
+  return index >= 0 ? index : null;
+};
 
 const toForm = (assignment: Assignment): AssignmentForm => ({
   id: assignment.id,
@@ -140,17 +186,22 @@ export default function CoursePage() {
   const [courseCode, setCourseCode] = useState("");
   const [courseCredits, setCourseCredits] = useState(3);
   const [courseGradingMethod, setCourseGradingMethod] = useState<"WEIGHTED" | "POINTS">("WEIGHTED");
+  const [courseCompleted, setCourseCompleted] = useState(false);
   const [semesterName, setSemesterName] = useState("Semester");
+  const [courseSemesterId, setCourseSemesterId] = useState<string | null>(null);
+  const [semesterList, setSemesterList] = useState<SemesterResponse[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedGrade, setSelectedGrade] = useState<string>("A");
   const [lastRun, setLastRun] = useState<string | null>(null);
   const [hasRun, setHasRun] = useState(false);
   const [form, setForm] = useState<AssignmentForm | null>(null);
+  const [confirmDeleteAssignment, setConfirmDeleteAssignment] = useState<AssignmentForm | null>(null);
   const [mode, setMode] = useState<"edit" | "add">("edit");
   const [menuOpen, setMenuOpen] = useState(false);
   const [editCourseOpen, setEditCourseOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [targetGpaSession, setTargetGpaSession] = useState<TargetGpaSession | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "earned" | "expected" | "category" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -226,24 +277,33 @@ export default function CoursePage() {
     if (!courseId) return;
     setLoading(true);
     try {
-      const [course, cats, semesters] = await Promise.all([
+      const [course, cats, semesters, targetSession] = await Promise.all([
         http<CourseResponse>(`/courses/${courseId}`),
         http<any[]>(`/courses/${courseId}/categories`),
         http<SemesterResponse[]>("/semesters"),
+        http<TargetGpaSession | null>("/target-gpa/active"),
       ]);
       if (course?.name) setCourseName(course.name);
       if (course?.credits !== undefined) setCourseCredits(course.credits);
       if (course?.code !== undefined) setCourseCode(course.code);
-      if ((course as any)?.desiredLetterGrade) setSelectedGrade((course as any).desiredLetterGrade);
+      const desiredGrade = (course as any)?.desiredLetterGrade ?? selectedGrade;
+      if (desiredGrade) setSelectedGrade(desiredGrade);
       if (course?.gradingMethod) setCourseGradingMethod(course.gradingMethod);
+      if (course?.isCompleted !== undefined) setCourseCompleted(course.isCompleted);
+      if (course?.semesterId) setCourseSemesterId(course.semesterId);
+      setTargetGpaSession(targetSession ?? null);
       if ((course as any)?.actualPercentGrade !== undefined && (course as any)?.actualPercentGrade !== null) {
         setActualPercent((course as any).actualPercentGrade / 100);
       }
 
       if (semesters?.length) {
-        const storedId = localStorage.getItem(LAST_SEMESTER_KEY);
-        const match = storedId ? semesters.find((s) => s.id === storedId) : undefined;
-        setSemesterName(match?.name ?? semesters[0].name);
+        setSemesterList(semesters);
+        const match = course?.semesterId
+          ? semesters.find((s) => s.id === course.semesterId)
+          : undefined;
+        const fallback = localStorage.getItem(LAST_SEMESTER_KEY);
+        const fallbackMatch = fallback ? semesters.find((s) => s.id === fallback) : undefined;
+        setSemesterName(match?.name ?? fallbackMatch?.name ?? semesters[0].name);
       }
 
       const mappedCategories: Category[] =
@@ -276,7 +336,7 @@ export default function CoursePage() {
       setAssignments(mappedAssignments);
 
       // load grade plan for current target to hydrate expected for remaining
-      const plan = await http<GradePlan>(`/courses/${courseId}/grade-plan?desiredGrade=${selectedGrade}`);
+      const plan = await http<GradePlan>(`/courses/${courseId}/grade-plan?desiredGrade=${desiredGrade}`);
       setActualPercent(plan.actualPercent);
       if (hasRun) {
         setAssignments((prev) =>
@@ -311,6 +371,16 @@ export default function CoursePage() {
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  const courseYearIndex = useMemo(() => {
+    if (!courseSemesterId || !semesterList.length) return null;
+    return getYearIndexForSemester(semesterList, courseSemesterId);
+  }, [courseSemesterId, semesterList]);
+
+  const targetGpaLockedForCourse =
+    targetGpaSession?.scope === "CAREER" ||
+    (targetGpaSession?.scope === "SEMESTER" && targetGpaSession.semesterId === courseSemesterId) ||
+    (targetGpaSession?.scope === "YEAR" && targetGpaSession.yearIndex === courseYearIndex);
 
   const totalMax = useMemo(() => assignments.reduce((sum, a) => sum + a.max, 0), [assignments]);
   const earnedPoints = useMemo(
@@ -529,6 +599,12 @@ export default function CoursePage() {
     }
   };
 
+  const handleConfirmDeleteAssignment = async () => {
+    if (!confirmDeleteAssignment) return;
+    await deleteAssignment(confirmDeleteAssignment.id);
+    setConfirmDeleteAssignment(null);
+  };
+
   const runSimulation = async () => {
     if (!courseId) return;
     try {
@@ -557,17 +633,35 @@ export default function CoursePage() {
     }
   };
 
-  const handleCourseSave = (data: { name: string; code: string; credits: number; targetGrade: string; gradingMethod: "WEIGHTED" | "POINTS" }) => {
+  const handleCourseSave = (data: {
+    name: string;
+    code: string;
+    credits: number;
+    targetGrade: string;
+    gradingMethod: "WEIGHTED" | "POINTS";
+    isCompleted?: boolean;
+  }) => {
     if (courseId) {
+      const payload: {
+        name: string;
+        code: string;
+        credits: number;
+        gradingMethod: "WEIGHTED" | "POINTS";
+        desiredLetterGrade?: string;
+        isCompleted: boolean;
+      } = {
+        name: data.name,
+        code: data.code,
+        credits: data.credits,
+        gradingMethod: data.gradingMethod,
+        isCompleted: data.isCompleted ?? false,
+      };
+      if (!targetGpaLockedForCourse) {
+        payload.desiredLetterGrade = data.targetGrade;
+      }
       http(`/courses/${courseId}`, {
         method: "PATCH",
-        body: JSON.stringify({
-          name: data.name,
-          code: data.code,
-          credits: data.credits,
-          desiredLetterGrade: data.targetGrade,
-          gradingMethod: data.gradingMethod,
-        }),
+        body: JSON.stringify(payload),
       }).catch(() => undefined);
     }
     setCourseName(data.name);
@@ -575,6 +669,8 @@ export default function CoursePage() {
     setCourseCredits(data.credits);
     setCourseCode(data.code);
     setCourseGradingMethod(data.gradingMethod);
+    setCourseCompleted(data.isCompleted ?? false);
+    void loadData();
     toast({ title: "Course updated", description: data.name });
   };
 
@@ -791,7 +887,7 @@ export default function CoursePage() {
               {semesterName}
             </Link>
             <span className="text-slate-400">›</span>
-            <span className="font-semibold text-slate-700">Course</span>
+            <span className="font-semibold text-slate-700">{courseName}</span>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon">
@@ -884,7 +980,11 @@ export default function CoursePage() {
               <div className="flex items-end gap-3">
                 <div className="flex flex-col gap-1">
                   <span className="text-xs font-semibold text-muted-foreground">Target grade</span>
-                  <Select value={selectedGrade} onValueChange={(value) => setSelectedGrade(value)}>
+                  <Select
+                    value={selectedGrade}
+                    onValueChange={(value) => setSelectedGrade(value)}
+                    disabled={!!targetGpaLockedForCourse}
+                  >
                     <SelectTrigger className="w-28">
                       <SelectValue placeholder="Grade" />
                     </SelectTrigger>
@@ -896,6 +996,11 @@ export default function CoursePage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {targetGpaLockedForCourse ? (
+                    <span className="text-[10px] text-muted-foreground">
+                      Target grade is controlled by your GPA setting.
+                    </span>
+                  ) : null}
                 </div>
                 <Button className="gap-2" onClick={runSimulation}>
                   <Play className="h-4 w-4" />
@@ -906,15 +1011,14 @@ export default function CoursePage() {
             <div className="flex justify-center px-5 pb-4">
               <div className="flex flex-wrap items-center justify-center gap-2">
                 <Button
-                  variant="outline"
-                  className="gap-2 bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200 hover:text-slate-800"
+                  className="gap-2 bg-[#faf1e4] text-[#343434] hover:bg-[#f3e5d3]"
                   onClick={() => nav(`/courses/${courseId}/categories`)}
                 >
                   <Pencil className="h-4 w-4" />
                   Manage categories
                 </Button>
                 <Button
-                  className="gap-2 bg-success text-white hover:bg-success/90"
+                  className="gap-2 bg-[#265D80] text-white hover:bg-[#1f4d6a]"
                   onClick={openCreate}
                   disabled={loading || (!categories.length && courseGradingMethod !== "POINTS")}
                 >
@@ -1258,26 +1362,53 @@ export default function CoursePage() {
           )}
           <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-between">
             {mode === "edit" && form && (
-              <Button variant="outline" className="text-destructive border-destructive" onClick={() => deleteAssignment(form.id)}>
+              <Button variant="destructive" onClick={() => setConfirmDeleteAssignment(form)}>
                 Delete
               </Button>
             )}
             <div className="flex-1" />
-            <Button onClick={saveAssignment}>Save</Button>
+            <Button
+              onClick={saveAssignment}
+              className={mode === "edit" ? "bg-[#16A286] text-white hover:bg-[#138a72]" : undefined}
+            >
+              Save
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={!!confirmDeleteAssignment}
+        onOpenChange={(open) => !open && setConfirmDeleteAssignment(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this assignment?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will delete the assignment and any recorded grade.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive hover:bg-destructive/90" onClick={handleConfirmDeleteAssignment}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <CourseModal
         open={editCourseOpen}
         onOpenChange={setEditCourseOpen}
         onSubmit={handleCourseSave}
+        targetGpaLocked={!!targetGpaLockedForCourse}
         initialData={{
           name: courseName,
           code: courseCode,
           credits: courseCredits,
           targetGrade: selectedGrade,
           gradingMethod: courseGradingMethod,
+          isCompleted: courseCompleted,
         }}
       />
 
