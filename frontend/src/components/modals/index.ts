@@ -1,4 +1,5 @@
 export { SemesterModal, type SemesterFormData } from "./SemesterModal";
+export { YearModal, type YearFormData } from "./YearModal";
 export { CourseModal, type CourseFormData } from "./CourseModal";
 export { CategoryModal, type CategoryFormData } from "./CategoryModal";
 export { AssignmentModal, type AssignmentFormData } from "./AssignmentModal";

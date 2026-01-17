@@ -12,7 +12,7 @@ export class CoursesService {
 
   private async assertSemesterOwnership(userId: string, semesterId: string) {
     const semester = await this.prisma.semester.findFirst({
-      where: { id: semesterId, userId },
+      where: { id: semesterId, year: { userId } },
       select: { id: true },
     });
 
@@ -33,7 +33,7 @@ export class CoursesService {
 
   async create(userId: string, semesterId: string, dto: CreateCourseDto) {
     await this.assertSemesterOwnership(userId, semesterId);
-    const activeTarget = await this.targetGpaService.getActiveSession(userId);
+    const hasTarget = await this.targetGpaService.isTargetActiveForSemester(userId, semesterId);
 
     const course = await this.prisma.$transaction(async (tx) => {
       const maxOrder = await tx.course.aggregate({
@@ -48,7 +48,7 @@ export class CoursesService {
           code: dto.code ?? '',
           name: dto.name,
           credits: dto.credits,
-          desiredLetterGrade: activeTarget ? 'D' : dto.desiredLetterGrade,
+          desiredLetterGrade: hasTarget ? 'D' : dto.desiredLetterGrade,
           gradingMethod: dto.gradingMethod ?? 'WEIGHTED',
           gradingScaleId: dto.gradingScaleId ?? null,
           sortOrder,
@@ -72,7 +72,7 @@ export class CoursesService {
       return course;
     });
 
-    if (activeTarget) {
+    if (hasTarget) {
       await this.targetGpaService.recomputeForCourseChange(userId, semesterId);
     }
 
@@ -158,8 +158,8 @@ export class CoursesService {
     }
 
     if (dto.desiredLetterGrade !== undefined) {
-      const activeTarget = await this.targetGpaService.getActiveSession(userId);
-      if (activeTarget) {
+      const targetApplies = await this.targetGpaService.isTargetActiveForSemester(userId, course.semesterId);
+      if (targetApplies) {
         throw new ForbiddenException('Cannot change target grade while Target GPA is enabled.');
       }
     }

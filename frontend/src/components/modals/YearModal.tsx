@@ -21,20 +21,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
-interface SemesterModalProps {
+interface YearModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (data: SemesterFormData) => void;
+  onSubmit: (data: YearFormData) => void;
   onDelete?: () => void | Promise<void>;
-  disabledSeasons?: string[];
   targetGpa?: {
     enabled: boolean;
     value?: number | null;
@@ -42,52 +34,51 @@ interface SemesterModalProps {
     lockedMessage?: string;
     onSave: (enabled: boolean, value?: number) => void;
   };
-  initialData?: SemesterFormData;
+  initialData?: YearFormData;
 }
 
-export interface SemesterFormData {
+export interface YearFormData {
   name: string;
-  season: string;
+  startDate: string;
+  endDate: string;
 }
 
-const seasons = ["Fall", "Spring", "Summer", "Winter"];
-
-export function SemesterModal({
+export function YearModal({
   open,
   onOpenChange,
   onSubmit,
   onDelete,
-  disabledSeasons = [],
   targetGpa,
   initialData,
-}: SemesterModalProps) {
-  const [formData, setFormData] = useState<SemesterFormData>(
+}: YearModalProps) {
+  const [formData, setFormData] = useState<YearFormData>(
     initialData || {
       name: "",
-      season: "Fall",
-    }
+      startDate: "",
+      endDate: "",
+    },
   );
-
-  useEffect(() => {
-    if (!open) return;
-    setFormData(
-      initialData || {
-        name: "",
-        season: "Fall",
-      }
-    );
-    setTargetEnabled(targetGpa?.enabled ?? false);
-    setTargetValue(targetGpa?.value?.toString() ?? "");
-  }, [open, initialData, targetGpa]);
-
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [targetEnabled, setTargetEnabled] = useState(targetGpa?.enabled ?? false);
   const [targetValue, setTargetValue] = useState(targetGpa?.value?.toString() ?? "");
   const targetGpaInvalid =
     !!targetGpa && targetEnabled && (targetValue.trim() === "" || Number.isNaN(Number(targetValue)));
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    if (!open) return;
+    setFormData(
+      initialData || {
+        name: "",
+        startDate: "",
+        endDate: "",
+      },
+    );
+    setTargetEnabled(targetGpa?.enabled ?? false);
+    setTargetValue(targetGpa?.value?.toString() ?? "");
+  }, [open, initialData, targetGpa]);
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
     if (targetGpaInvalid) return;
     onSubmit(formData);
     if (targetGpa) {
@@ -112,47 +103,45 @@ export function SemesterModal({
       <DialogContent className="sm:max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>{initialData ? "Edit Semester" : "Add Semester"}</DialogTitle>
+            <DialogTitle>{initialData ? "Edit Year" : "Add Year"}</DialogTitle>
             <DialogDescription>
-              Create a new semester to organize your courses.
+              Manage the label and date range for your academic year.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="season">Season</Label>
-              <Select
-                value={formData.season}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, season: value })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select season" />
-                </SelectTrigger>
-                <SelectContent>
-                  {seasons.map((season) => (
-                    <SelectItem key={season} value={season} disabled={disabledSeasons.includes(season)}>
-                      {season}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="name">Custom Name (optional)</Label>
+              <Label htmlFor="year-name">Year name</Label>
               <Input
-                id="name"
-                placeholder={formData.season}
+                id="year-name"
+                placeholder="Freshman Year"
                 value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
+                onChange={(event) => setFormData({ ...formData, name: event.target.value })}
               />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="year-start">Start date</Label>
+                <Input
+                  id="year-start"
+                  type="date"
+                  value={formData.startDate}
+                  onChange={(event) => setFormData({ ...formData, startDate: event.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="year-end">End date</Label>
+                <Input
+                  id="year-end"
+                  type="date"
+                  value={formData.endDate}
+                  onChange={(event) => setFormData({ ...formData, endDate: event.target.value })}
+                />
+              </div>
             </div>
             {initialData && targetGpa ? (
               <div className="grid gap-3 rounded-lg border p-4">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="targetGpaToggle">Set Semester GPA</Label>
+                  <Label htmlFor="targetGpaToggle">Set Year GPA</Label>
                   <Switch
                     id="targetGpaToggle"
                     checked={targetEnabled}
@@ -188,7 +177,7 @@ export function SemesterModal({
                 variant="destructive"
                 onClick={() => setConfirmDeleteOpen(true)}
               >
-                Delete Semester
+                Delete Year
               </Button>
             ) : (
               <span />
@@ -200,7 +189,7 @@ export function SemesterModal({
                 </Button>
               ) : null}
               <Button type="submit" disabled={targetGpaInvalid}>
-                {initialData ? "Save Changes" : "Add Semester"}
+                {initialData ? "Save Changes" : "Add Year"}
               </Button>
             </div>
           </DialogFooter>
@@ -209,9 +198,9 @@ export function SemesterModal({
       <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this semester?</AlertDialogTitle>
+            <AlertDialogTitle>Delete this year?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will delete the semester and all related courses, categories, assignments, and grades.
+              This will delete the year and all related semesters, courses, categories, assignments, and grades.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

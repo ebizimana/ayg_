@@ -16,7 +16,7 @@ export class CategoriesService {
     if (!course) throw new NotFoundException('Course not found');
 
     const semester = await this.prisma.semester.findFirst({
-      where: { id: course.semesterId, userId },
+      where: { id: course.semesterId, year: { userId } },
       select: { id: true },
     });
 
@@ -128,7 +128,7 @@ export class CategoriesService {
     const categories = await this.prisma.gradeCategory.findMany({
       where: {
         id: { in: orderedIds },
-        course: { semester: { userId } },
+        course: { semester: { year: { userId } } },
       },
       select: { id: true, courseId: true },
     });

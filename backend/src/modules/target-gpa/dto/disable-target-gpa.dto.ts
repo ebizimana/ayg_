@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsIn, IsOptional, IsString } from 'class-validator';
 
 export class DisableTargetGpaDto {
   @IsOptional()
@@ -6,9 +6,8 @@ export class DisableTargetGpaDto {
   scope?: 'CAREER' | 'YEAR' | 'SEMESTER';
 
   @IsOptional()
-  @IsInt()
-  @Min(0)
-  yearIndex?: number;
+  @IsString()
+  yearId?: string;
 
   @IsOptional()
   @IsString()

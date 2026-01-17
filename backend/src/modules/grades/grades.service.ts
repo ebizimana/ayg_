@@ -22,7 +22,7 @@ export class GradesService {
     const assignment = await this.prisma.assignment.findFirst({
       where: {
         id: assignmentId,
-        category: { course: { semester: { userId } } },
+        category: { course: { semester: { year: { userId } } } },
       },
       select: { id: true, maxPoints: true, isExtraCredit: true },
     });

@@ -12,14 +12,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -31,12 +23,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { SemesterModal, TargetGpaModal, type SemesterFormData } from "@/components/modals";
+import { SemesterModal, TargetGpaModal, YearModal, type SemesterFormData, type YearFormData } from "@/components/modals";
 import { useToast } from "@/hooks/use-toast";
 import { http } from "@/lib/http";
 import { GraduationCap, Plus, Bell, User, Settings, LogOut, ChevronDown, Menu, X, MoreVertical } from "lucide-react";
 
-type Semester = { id: string; name: string; startDate: string; endDate: string };
+type Semester = { id: string; name: string; startDate: string; endDate: string; yearId: string };
+type Year = { id: string; name: string; startDate: string; endDate: string; semesters: Semester[] };
 type Course = {
   id: string;
   name: string;
@@ -49,7 +42,7 @@ type TargetGpaSession = {
   id: string;
   scope: "CAREER" | "YEAR" | "SEMESTER";
   targetGpa: number;
-  yearIndex?: number | null;
+  yearId?: string | null;
   semesterId?: string | null;
   maxAchievableGpa?: number | null;
   gpaShortfall?: number | null;
@@ -57,42 +50,12 @@ type TargetGpaSession = {
 type ModalType = "semester" | null;
 
 const semesterSeasons = ["Fall", "Spring", "Summer", "Winter"];
-const defaultYearLabels = ["Freshman", "Sophomore", "Junior", "Senior"];
-const YEAR_LABELS_KEY = "ayg_year_labels";
 const LAST_SEMESTER_KEY = "ayg_last_semester_id";
 
-const seasonDates = (season: string, yearStr: string) => {
-  const year = Number(yearStr) || new Date().getFullYear();
-  switch (season) {
-    case "Spring":
-      return {
-        startDate: new Date(`${year}-01-15`).toISOString(),
-        endDate: new Date(`${year}-05-15`).toISOString(),
-      };
-    case "Summer":
-      return {
-        startDate: new Date(`${year}-05-20`).toISOString(),
-        endDate: new Date(`${year}-08-20`).toISOString(),
-      };
-    case "Winter":
-      return {
-        startDate: new Date(`${year}-12-15`).toISOString(),
-        endDate: new Date(`${year + 1}-01-20`).toISOString(),
-      };
-    case "Fall":
-    default:
-      return {
-        startDate: new Date(`${year}-08-20`).toISOString(),
-        endDate: new Date(`${year}-12-20`).toISOString(),
-      };
-  }
-};
-
 const parseSemesterName = (name: string) => {
-  const [maybeSeason, maybeYear] = name.split(" ");
+  const [maybeSeason] = name.split(" ");
   const season = semesterSeasons.includes(maybeSeason) ? maybeSeason : "Fall";
-  const year = /^\d{4}$/.test(maybeYear ?? "") ? maybeYear : String(new Date().getFullYear());
-  return { season, year };
+  return { season };
 };
 
 const gradePoints: Record<string, number> = {
@@ -108,21 +71,6 @@ const gradePoints: Record<string, number> = {
   "D+": 1.3,
   D: 1.0,
   F: 0,
-};
-
-const calculateTargetGpa = (courses: Course[]) => {
-  const totals = courses.reduce(
-    (acc, course) => {
-      const credits = Number(course.credits) || 0;
-      const points = gradePoints[course.desiredLetterGrade?.toUpperCase?.() ?? ""] ?? 0;
-      acc.totalCredits += credits;
-      acc.totalPoints += points * credits;
-      return acc;
-    },
-    { totalCredits: 0, totalPoints: 0 },
-  );
-  const gpa = totals.totalCredits ? totals.totalPoints / totals.totalCredits : 0;
-  return { totalCredits: totals.totalCredits, gpa };
 };
 
 const calculateGpa = (courses: Course[], gradeAccessor: (course: Course) => string | null | undefined) => {
@@ -148,31 +96,17 @@ export default function AcademicYear() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [editingSemester, setEditingSemester] = useState<Semester | null>(null);
-  const [semesters, setSemesters] = useState<Semester[]>([]);
+  const [years, setYears] = useState<Year[]>([]);
   const [coursesBySemester, setCoursesBySemester] = useState<Record<string, Course[]>>({});
   const [loading, setLoading] = useState(false);
   const [fieldOfStudy, setFieldOfStudy] = useState(localStorage.getItem("ayg_field_of_study") ?? "");
-  const [targetGpaSession, setTargetGpaSession] = useState<TargetGpaSession | null>(null);
+  const [targetGpaSessions, setTargetGpaSessions] = useState<TargetGpaSession[]>([]);
   const [careerTargetModalOpen, setCareerTargetModalOpen] = useState(false);
-  const [yearTargetIndex, setYearTargetIndex] = useState<number | null>(null);
-  const [yearTargetLabel, setYearTargetLabel] = useState<string>("Year");
-  const [yearLabels, setYearLabels] = useState<string[]>(() => {
-    try {
-      const stored = localStorage.getItem(YEAR_LABELS_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.every((value) => typeof value === "string")) {
-          if (parsed.length === defaultYearLabels.length) return parsed;
-        }
-      }
-    } catch {
-      // Ignore parsing failures and use defaults.
-    }
-    return defaultYearLabels;
-  });
-  const [yearEditIndex, setYearEditIndex] = useState<number | null>(null);
-  const [yearEditName, setYearEditName] = useState("");
-  const [yearDeleteIndex, setYearDeleteIndex] = useState<number | null>(null);
+  const [activeYearId, setActiveYearId] = useState<string | null>(null);
+  const [editingYear, setEditingYear] = useState<Year | null>(null);
+  const [yearModalOpen, setYearModalOpen] = useState(false);
+  const [yearDeleteTarget, setYearDeleteTarget] = useState<Year | null>(null);
+  const [draggedSemesterId, setDraggedSemesterId] = useState<string | null>(null);
 
   const token = useMemo(() => localStorage.getItem("ayg_token"), []);
 
@@ -181,25 +115,41 @@ export default function AcademicYear() {
       nav("/auth?mode=login");
       return;
     }
-    loadSemesters();
+    loadYears();
     loadTargetGpaSession();
   }, [token]);
 
   const createSemester = async (form: SemesterFormData) => {
+    if (!activeYearId) {
+      toast({
+        title: "Select a year",
+        description: "Choose an academic year before adding a semester.",
+        variant: "destructive",
+      });
+      return;
+    }
     setLoading(true);
     try {
-      const name = form.name || `${form.season} ${form.year}`;
-      const dates = seasonDates(form.season, form.year);
+      const activeYear = years.find((year) => year.id === activeYearId) ?? null;
+      const yearValue = activeYear
+        ? String(new Date(activeYear.startDate).getFullYear())
+        : String(new Date().getFullYear());
+      const name = form.name || `${form.season} ${yearValue}`;
       const payload = {
+        yearId: activeYearId,
         name,
-        startDate: form.startDate || dates.startDate,
-        endDate: form.endDate || dates.endDate,
       };
       const created = await http<Semester>("/semesters", {
         method: "POST",
         body: JSON.stringify(payload),
       });
-      setSemesters((prev) => [created, ...prev]);
+      setYears((prev) =>
+        prev.map((year) =>
+          year.id === activeYearId
+            ? { ...year, semesters: [created, ...year.semesters] }
+            : year,
+        ),
+      );
       setCoursesBySemester((prev) => ({ ...prev, [created.id]: [] }));
       toast({ title: "Semester added", description: created.name });
     } catch (err) {
@@ -216,18 +166,27 @@ export default function AcademicYear() {
   const updateSemester = async (semesterId: string, form: SemesterFormData) => {
     setLoading(true);
     try {
-      const name = form.name || `${form.season} ${form.year}`;
-      const dates = seasonDates(form.season, form.year);
+      const parentYear =
+        years.find((year) => year.semesters.some((semester) => semester.id === semesterId)) ?? null;
+      const yearValue = parentYear
+        ? String(new Date(parentYear.startDate).getFullYear())
+        : String(new Date().getFullYear());
+      const name = form.name || `${form.season} ${yearValue}`;
       const payload = {
         name,
-        startDate: form.startDate || dates.startDate,
-        endDate: form.endDate || dates.endDate,
       };
       const updated = await http<Semester>(`/semesters/${semesterId}`, {
         method: "PATCH",
         body: JSON.stringify(payload),
       });
-      setSemesters((prev) => prev.map((semester) => (semester.id === semesterId ? updated : semester)));
+      setYears((prev) =>
+        prev.map((year) => ({
+          ...year,
+          semesters: year.semesters.map((semester) =>
+            semester.id === semesterId ? updated : semester,
+          ),
+        })),
+      );
       toast({ title: "Semester updated", description: updated.name });
     } catch (err) {
       toast({
@@ -244,7 +203,12 @@ export default function AcademicYear() {
     setLoading(true);
     try {
       await http(`/semesters/${semesterId}`, { method: "DELETE" });
-      setSemesters((prev) => prev.filter((semester) => semester.id !== semesterId));
+      setYears((prev) =>
+        prev.map((year) => ({
+          ...year,
+          semesters: year.semesters.filter((semester) => semester.id !== semesterId),
+        })),
+      );
       setCoursesBySemester((prev) => {
         const next = { ...prev };
         delete next[semesterId];
@@ -263,6 +227,133 @@ export default function AcademicYear() {
     }
   };
 
+  const createYear = async (form: YearFormData) => {
+    setLoading(true);
+    try {
+      const created = await http<Year>("/years", {
+        method: "POST",
+        body: JSON.stringify(form),
+      });
+      setYears((prev) => [...prev, { ...created, semesters: [] }]);
+      toast({ title: "Year added", description: created.name });
+    } catch (err) {
+      toast({
+        title: "Failed to add year",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateYear = async (yearId: string, form: YearFormData) => {
+    setLoading(true);
+    try {
+      const updated = await http<Year>(`/years/${yearId}`, {
+        method: "PATCH",
+        body: JSON.stringify(form),
+      });
+      setYears((prev) =>
+        prev.map((year) =>
+          year.id === yearId ? { ...year, ...updated } : year,
+        ),
+      );
+      toast({ title: "Year updated", description: updated.name });
+    } catch (err) {
+      toast({
+        title: "Failed to update year",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteYear = async (year: Year) => {
+    setLoading(true);
+    try {
+      await http(`/years/${year.id}`, { method: "DELETE" });
+      setYears((prev) => prev.filter((item) => item.id !== year.id));
+      setCoursesBySemester((prev) => {
+        const next = { ...prev };
+        year.semesters.forEach((semester) => {
+          delete next[semester.id];
+        });
+        return next;
+      });
+      toast({ title: "Year deleted", description: year.name });
+      await loadTargetGpaSession();
+    } catch (err) {
+      toast({
+        title: "Failed to delete year",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const moveSemesterToYear = async (semesterId: string, targetYearId: string) => {
+    const sourceYear = years.find((year) => year.semesters.some((semester) => semester.id === semesterId));
+    if (!sourceYear || sourceYear.id === targetYearId) return;
+    setLoading(true);
+    try {
+      const updated = await http<Semester>(`/semesters/${semesterId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ yearId: targetYearId }),
+      });
+      setYears((prev) =>
+        prev.map((year) => {
+          if (year.id === sourceYear.id) {
+            return {
+              ...year,
+              semesters: year.semesters.filter((semester) => semester.id !== semesterId),
+            };
+          }
+          if (year.id === targetYearId) {
+            return {
+              ...year,
+              semesters: [updated, ...year.semesters],
+            };
+          }
+          return year;
+        }),
+      );
+      await loadTargetGpaSession();
+      toast({
+        title: "Semester moved",
+        description: `Moved to ${years.find((year) => year.id === targetYearId)?.name ?? "year"}.`,
+      });
+    } catch (err) {
+      toast({
+        title: "Failed to move semester",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getSeasonFromName = (name: string) => {
+    const [maybeSeason] = name.split(" ");
+    return semesterSeasons.includes(maybeSeason) ? maybeSeason : null;
+  };
+
+  const getDisabledSeasonsForYear = (yearId: string | null, currentSeason?: string) => {
+    if (!yearId) return [];
+    const year = years.find((item) => item.id === yearId);
+    if (!year) return [];
+    const seasons = year.semesters
+      .map((semester) => getSeasonFromName(semester.name))
+      .filter((season): season is string => !!season);
+    return seasons.filter((season) => season !== currentSeason);
+  };
+
   const handleCareerTargetSave = async (enabled: boolean, value?: number) => {
     setLoading(true);
     try {
@@ -278,7 +369,7 @@ export default function AcademicYear() {
         });
       }
       await loadTargetGpaSession();
-      await loadSemesters();
+      await loadYears();
     } catch (err) {
       toast({
         title: "Failed to update target GPA",
@@ -291,22 +382,22 @@ export default function AcademicYear() {
   };
 
   const handleYearTargetSave = async (enabled: boolean, value?: number) => {
-    if (yearTargetIndex === null) return;
+    if (!editingYear) return;
     setLoading(true);
     try {
       if (enabled && value !== undefined) {
         await http("/target-gpa/enable", {
           method: "POST",
-          body: JSON.stringify({ scope: "YEAR", targetGpa: value, yearIndex: yearTargetIndex }),
+          body: JSON.stringify({ scope: "YEAR", targetGpa: value, yearId: editingYear.id }),
         });
       } else {
         await http("/target-gpa/disable", {
           method: "POST",
-          body: JSON.stringify({ scope: "YEAR", yearIndex: yearTargetIndex }),
+          body: JSON.stringify({ scope: "YEAR", yearId: editingYear.id }),
         });
       }
       await loadTargetGpaSession();
-      await loadSemesters();
+      await loadYears();
     } catch (err) {
       toast({
         title: "Failed to update year target GPA",
@@ -338,7 +429,7 @@ export default function AcademicYear() {
         });
       }
       await loadTargetGpaSession();
-      await loadSemesters();
+      await loadYears();
     } catch (err) {
       toast({
         title: "Failed to update semester target GPA",
@@ -385,18 +476,19 @@ export default function AcademicYear() {
     }
   };
 
-  const loadSemesters = async () => {
+  const loadYears = async () => {
     try {
-      const data = await http<Semester[]>("/semesters");
-      setSemesters(data ?? []);
-      if (data?.length) {
-        loadCoursesForSemesters(data);
+      const data = await http<Year[]>("/years");
+      setYears(data ?? []);
+      const allSemesters = (data ?? []).flatMap((year) => year.semesters);
+      if (allSemesters.length) {
+        loadCoursesForSemesters(allSemesters);
       } else {
         setCoursesBySemester({});
       }
     } catch (err) {
       toast({
-        title: "Failed to load semesters",
+        title: "Failed to load years",
         description: err instanceof Error ? err.message : "Please try again.",
         variant: "destructive",
       });
@@ -405,8 +497,8 @@ export default function AcademicYear() {
 
   const loadTargetGpaSession = async () => {
     try {
-      const session = await http<TargetGpaSession | null>("/target-gpa/active");
-      setTargetGpaSession(session ?? null);
+      const sessions = await http<TargetGpaSession[]>("/target-gpa/active");
+      setTargetGpaSessions(sessions ?? []);
     } catch (err) {
       toast({
         title: "Failed to load target GPA",
@@ -416,43 +508,83 @@ export default function AcademicYear() {
     }
   };
 
-  const groupedSemesters = useMemo(() => {
-    const sorted = [...semesters].sort(
-      (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
-    );
-    const groups: Semester[][] = [];
-    let current: Semester[] = [];
-    sorted.forEach((semester) => {
-      const { season } = parseSemesterName(semester.name);
-      if (season === "Fall" && current.length > 0) {
-        groups.push(current);
-        current = [];
-      }
-      current.push(semester);
+  const yearCards = useMemo(
+    () => [...years].sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()),
+    [years],
+  );
+  const semesterYearMap = useMemo(() => {
+    const map = new Map<string, string>();
+    years.forEach((year) => {
+      year.semesters.forEach((semester) => {
+        map.set(semester.id, year.id);
+      });
     });
-    if (current.length) groups.push(current);
-    if (groups.length > yearLabels.length) {
-      const overflow = groups.slice(yearLabels.length - 1).flat();
-      return [...groups.slice(0, yearLabels.length - 1), overflow];
-    }
-    return groups;
-  }, [semesters, yearLabels]);
+    return map;
+  }, [years]);
 
-  const yearCards = yearLabels.map((label, index) => ({
-    label,
-    semesters: groupedSemesters[index] ?? [],
-  }));
-  const freshmanYear = yearCards[0] ?? { label: "Freshman", semesters: [] as Semester[] };
+  const careerTargetSession = targetGpaSessions.find((session) => session.scope === "CAREER") ?? null;
+  const yearTargetSessions = targetGpaSessions.filter((session) => session.scope === "YEAR");
+  const semesterTargetSessions = targetGpaSessions.filter((session) => session.scope === "SEMESTER");
+  const yearTargetDisplaySession = yearTargetSessions[0] ?? null;
+  const careerTargetActive = !!careerTargetSession;
+  const careerTargetLocked = targetGpaSessions.some((session) => session.scope !== "CAREER");
+  const targetGpaLockedMessage = careerTargetActive
+    ? "Career Target GPA is already active."
+    : yearTargetSessions.length
+      ? "Year Target GPA is already active."
+      : semesterTargetSessions.length
+        ? "Semester Target GPA is already active."
+        : "";
+  const yearTargetLabelDisplay =
+    yearTargetDisplaySession
+      ? years.find((year) => year.id === yearTargetDisplaySession.yearId)?.name ?? "Year"
+      : null;
+  const yearTargetShortfall =
+    yearTargetDisplaySession ? yearTargetDisplaySession?.gpaShortfall ?? null : null;
+  const yearTargetMax =
+    yearTargetDisplaySession ? yearTargetDisplaySession?.maxAchievableGpa ?? null : null;
+
   const activeYearTarget =
-    yearTargetIndex !== null &&
-    targetGpaSession?.scope === "YEAR" &&
-    targetGpaSession.yearIndex === yearTargetIndex;
+    !!editingYear &&
+    targetGpaSessions.some(
+      (session) => session.scope === "YEAR" && session.yearId === editingYear.id,
+    );
+  const hasSemesterTargetsInYear = (yearId: string) =>
+    semesterTargetSessions.some(
+      (session) => session.semesterId && semesterYearMap.get(session.semesterId) === yearId,
+    );
   const yearTargetLocked =
-    yearTargetIndex !== null && !!targetGpaSession && !activeYearTarget;
+    !!editingYear &&
+    !activeYearTarget &&
+    (careerTargetActive || hasSemesterTargetsInYear(editingYear.id));
   const semesterTargetActive =
-    targetGpaSession?.scope === "SEMESTER" && targetGpaSession.semesterId === editingSemester?.id;
+    !!editingSemester &&
+    targetGpaSessions.some(
+      (session) => session.scope === "SEMESTER" && session.semesterId === editingSemester.id,
+    );
+  const semesterYearTargetActive =
+    !!editingSemester &&
+    targetGpaSessions.some(
+      (session) =>
+        session.scope === "YEAR" &&
+        session.yearId === semesterYearMap.get(editingSemester.id),
+    );
   const semesterTargetLocked =
-    !!targetGpaSession && !semesterTargetActive && !!editingSemester;
+    !!editingSemester &&
+    !semesterTargetActive &&
+    (careerTargetActive || semesterYearTargetActive);
+  const editingYearTargetSession =
+    editingYear
+      ? yearTargetSessions.find((session) => session.yearId === editingYear.id) ?? null
+      : null;
+  const editingSemesterTargetSession =
+    editingSemester
+      ? semesterTargetSessions.find((session) => session.semesterId === editingSemester.id) ?? null
+      : null;
+  const hasYearTarget = (yearId: string) =>
+    yearTargetSessions.some((session) => session.yearId === yearId);
+  const hasSemesterTarget = (semesterId: string) =>
+    semesterTargetSessions.some((session) => session.semesterId === semesterId);
   const allCourses = useMemo(
     () => Object.values(coursesBySemester).flat(),
     [coursesBySemester],
@@ -467,29 +599,20 @@ export default function AcademicYear() {
   );
   const currentGpaDisplay = currentGpa === null ? "—" : currentGpa.toFixed(2);
   const computedTargetGpaDisplay = targetGpa === null ? "—" : targetGpa.toFixed(2);
-  const careerTargetActive = targetGpaSession?.scope === "CAREER";
-  const careerTargetLocked = !!targetGpaSession && targetGpaSession.scope !== "CAREER";
-  const targetGpaLockedMessage = targetGpaSession
-    ? targetGpaSession.scope === "CAREER"
-      ? "Career Target GPA is already active."
-      : targetGpaSession.scope === "YEAR"
-        ? "Year Target GPA is already active."
-        : "Semester Target GPA is already active."
-    : "";
   const targetGpaDisplay = careerTargetActive
-    ? targetGpaSession?.targetGpa.toFixed(2) ?? "—"
+    ? careerTargetSession?.targetGpa.toFixed(2) ?? "—"
     : computedTargetGpaDisplay;
   const targetGpaNote = careerTargetActive ? "Target GPA set. Configure to change." : null;
-  const targetGpaShortfall = careerTargetActive ? targetGpaSession?.gpaShortfall ?? null : null;
-  const targetGpaMax = careerTargetActive ? targetGpaSession?.maxAchievableGpa ?? null : null;
-  const yearTargetLabelDisplay =
-    targetGpaSession?.scope === "YEAR"
-      ? yearLabels[targetGpaSession.yearIndex ?? 0] ?? "Year"
-      : null;
-  const yearTargetShortfall =
-    targetGpaSession?.scope === "YEAR" ? targetGpaSession?.gpaShortfall ?? null : null;
-  const yearTargetMax =
-    targetGpaSession?.scope === "YEAR" ? targetGpaSession?.maxAchievableGpa ?? null : null;
+  const targetGpaShortfall = careerTargetActive ? careerTargetSession?.gpaShortfall ?? null : null;
+  const targetGpaMax = careerTargetActive ? careerTargetSession?.maxAchievableGpa ?? null : null;
+  const totalSemesters = useMemo(
+    () => years.reduce((sum, year) => sum + year.semesters.length, 0),
+    [years],
+  );
+  const totalCourses = allCourses.length;
+  const totalCredits = allCourses.reduce((sum, course) => sum + (Number(course.credits) || 0), 0);
+  const activeYearTargets = yearTargetSessions.length;
+  const activeSemesterTargets = semesterTargetSessions.length;
 
   const handleSemesterClick = (semesterId: string) => {
     localStorage.setItem(LAST_SEMESTER_KEY, semesterId);
@@ -501,69 +624,6 @@ export default function AcademicYear() {
     nav("/auth?mode=login");
   };
 
-  const openYearEdit = (index: number) => {
-    setYearEditIndex(index);
-    setYearEditName(yearLabels[index] ?? "");
-  };
-
-  const handleSaveYearLabel = () => {
-    if (yearEditIndex === null) return;
-    const nextName = yearEditName.trim();
-    if (!nextName) {
-      toast({
-        title: "Year name is required",
-        description: "Enter a name before saving.",
-        variant: "destructive",
-      });
-      return;
-    }
-    setYearLabels((prev) => {
-      const next = [...prev];
-      next[yearEditIndex] = nextName;
-      localStorage.setItem(YEAR_LABELS_KEY, JSON.stringify(next));
-      return next;
-    });
-    setYearEditIndex(null);
-    toast({ title: "Year updated", description: `Renamed to ${nextName}.` });
-  };
-
-  const handleDeleteYear = async () => {
-    if (yearDeleteIndex === null) return;
-    const year = yearCards[yearDeleteIndex];
-    if (!year) return;
-    if (!year.semesters.length) {
-      setYearDeleteIndex(null);
-      return;
-    }
-    setLoading(true);
-    try {
-      if (targetGpaSession?.scope === "YEAR" && targetGpaSession.yearIndex === yearDeleteIndex) {
-        await http("/target-gpa/disable", {
-          method: "POST",
-          body: JSON.stringify({ scope: "YEAR", yearIndex: yearDeleteIndex }),
-        });
-      }
-      await Promise.all(
-        year.semesters.map((semester) => http(`/semesters/${semester.id}`, { method: "DELETE" })),
-      );
-      setYearDeleteIndex(null);
-      setYearEditIndex(null);
-      await loadSemesters();
-      await loadTargetGpaSession();
-      toast({
-        title: "Year deleted",
-        description: "All semesters in this year were removed.",
-      });
-    } catch (err) {
-      toast({
-        title: "Failed to delete year",
-        description: err instanceof Error ? err.message : "Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-sky-50">
@@ -657,7 +717,14 @@ export default function AcademicYear() {
           </Card>
           <Card className="border-slate-200">
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Target GPA</CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base">Target GPA</CardTitle>
+                {careerTargetActive ? (
+                  <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                    Active
+                  </span>
+                ) : null}
+              </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -723,52 +790,71 @@ export default function AcademicYear() {
         </div>
 
         <div className="space-y-4">
-          {yearCards.map((year, index) => (
-            <Card key={`${year.label}-${index}`} className="border-slate-200 shadow-sm">
+          {yearCards.map((year) => (
+            <Card
+              key={year.id}
+              className="border-slate-200 shadow-sm"
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={() => {
+                if (draggedSemesterId) {
+                  void moveSemesterToYear(draggedSemesterId, year.id);
+                  setDraggedSemesterId(null);
+                }
+              }}
+            >
               <CardHeader className="pb-3">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div className="flex items-center gap-2">
-                    <Button
-                      variant="link"
-                      className="h-auto p-0 text-lg font-semibold underline underline-offset-4"
-                      onClick={() => {
-                        setYearTargetIndex(index);
-                        setYearTargetLabel(year.label);
-                      }}
-                    >
-                      {year.label}
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start">
-                        <DropdownMenuItem
-                          onSelect={(event) => {
-                            event.preventDefault();
-                            openYearEdit(index);
-                          }}
-                        >
-                          Edit year
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive focus:text-destructive"
-                          onSelect={(event) => {
-                            event.preventDefault();
-                            setYearDeleteIndex(index);
-                          }}
-                        >
-                          Delete year
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                  <Button
+                    variant="link"
+                    className="h-auto p-0 text-lg font-semibold underline underline-offset-4"
+                    onClick={() => {
+                      setEditingYear(year);
+                      setYearModalOpen(true);
+                    }}
+                  >
+                    {year.name}
+                  </Button>
+                  {hasYearTarget(year.id) ? (
+                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                      Target GPA
+                    </span>
+                  ) : null}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuItem
+                        onSelect={(event) => {
+                          event.preventDefault();
+                          setEditingYear(year);
+                          setYearModalOpen(true);
+                        }}
+                      >
+                        Edit year
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onSelect={(event) => {
+                          event.preventDefault();
+                          setYearDeleteTarget(year);
+                        }}
+                      >
+                        Delete year
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   </div>
                   <Button
                     size="sm"
                     className="justify-center md:w-auto bg-[#265D80] text-white hover:bg-[#1f4d6a]"
-                    onClick={() => setActiveModal("semester")}
+                    onClick={() => {
+                      setActiveYearId(year.id);
+                      setActiveModal("semester");
+                    }}
                     disabled={loading}
                   >
                     <Plus className="h-4 w-4 mr-2" />
@@ -785,7 +871,6 @@ export default function AcademicYear() {
                     <div className="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
                       {year.semesters.map((semester) => {
                         const courses = coursesBySemester[semester.id] ?? [];
-                        const totals = calculateTargetGpa(courses);
                         const totalCredits = courses.reduce((sum, course) => sum + (Number(course.credits) || 0), 0);
                         const currentSemesterGpa = calculateGpa(courses, (course) => course.actualLetterGrade);
                         const targetSemesterGpa = calculateGpa(
@@ -795,7 +880,16 @@ export default function AcademicYear() {
                         const currentSemesterGpaDisplay = currentSemesterGpa === null ? "—" : currentSemesterGpa.toFixed(2);
                         const targetSemesterGpaDisplay = targetSemesterGpa === null ? "—" : targetSemesterGpa.toFixed(2);
                         return (
-                          <Card key={semester.id} className="border-slate-200 shadow-sm">
+                          <Card
+                            key={semester.id}
+                            className="border-slate-200 shadow-sm"
+                            draggable
+                            onDragStart={(event) => {
+                              event.dataTransfer.setData("text/plain", semester.id);
+                              setDraggedSemesterId(semester.id);
+                            }}
+                            onDragEnd={() => setDraggedSemesterId(null)}
+                          >
                             <CardContent className="p-0 overflow-hidden">
                               <div className="border-b border-slate-200 bg-slate-50 px-2 py-2">
                                 <div className="flex items-center justify-between gap-2">
@@ -806,6 +900,11 @@ export default function AcademicYear() {
                                   >
                                     {semester.name}
                                   </Button>
+                                  {hasSemesterTarget(semester.id) ? (
+                                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                      Target GPA
+                                    </span>
+                                  ) : null}
                                   <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
                                       <Button
@@ -916,7 +1015,10 @@ export default function AcademicYear() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setActiveModal("semester")}
+                onClick={() => {
+                  setEditingYear(null);
+                  setYearModalOpen(true);
+                }}
                 disabled={loading}
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -959,6 +1061,35 @@ export default function AcademicYear() {
             </CardContent>
           </Card>
         ) : null}
+
+        <Card className="border-slate-200 bg-white/80">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Snapshot</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Credits tracked</p>
+              <p className="text-2xl font-semibold text-slate-900">{totalCredits.toFixed(1)}</p>
+              <p className="text-xs text-muted-foreground">{years.length} years • {totalSemesters} semesters</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Active targets</p>
+              <p className="text-2xl font-semibold text-slate-900">
+                {careerTargetActive ? "Career" : activeYearTargets + activeSemesterTargets}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {careerTargetActive
+                  ? "Career target enabled"
+                  : `${activeYearTargets} year • ${activeSemesterTargets} semester`}
+              </p>
+            </div>
+            {careerTargetActive && targetGpaMax !== null && targetGpaShortfall !== null ? (
+              <div className="col-span-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                Max achievable GPA: {targetGpaMax.toFixed(2)} • Shortfall: {targetGpaShortfall.toFixed(2)}
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
       </main>
 
       <TargetGpaModal
@@ -968,23 +1099,10 @@ export default function AcademicYear() {
         description="Control target grades across all courses."
         toggleLabel="Set Target GPA"
         enabled={careerTargetActive}
-        targetGpa={targetGpaSession?.targetGpa ?? null}
+        targetGpa={careerTargetSession?.targetGpa ?? null}
         locked={careerTargetLocked}
         lockedMessage={careerTargetLocked ? targetGpaLockedMessage : undefined}
         onSave={handleCareerTargetSave}
-      />
-
-      <TargetGpaModal
-        open={yearTargetIndex !== null}
-        onOpenChange={(open) => !open && setYearTargetIndex(null)}
-        title={`Edit ${yearTargetLabelDisplay ?? yearTargetLabel}`}
-        description="Set a GPA target for this academic year."
-        toggleLabel="Set Year GPA"
-        enabled={activeYearTarget}
-        targetGpa={activeYearTarget ? targetGpaSession?.targetGpa ?? null : null}
-        locked={yearTargetLocked}
-        lockedMessage={yearTargetLocked ? targetGpaLockedMessage : undefined}
-        onSave={handleYearTargetSave}
       />
 
       <SemesterModal
@@ -993,8 +1111,14 @@ export default function AcademicYear() {
           if (!open) {
             setActiveModal(null);
             setEditingSemester(null);
+            setActiveYearId(null);
           }
         }}
+        disabledSeasons={
+          editingSemester
+            ? getDisabledSeasonsForYear(editingSemester.yearId, getSeasonFromName(editingSemester.name) ?? undefined)
+            : getDisabledSeasonsForYear(activeYearId)
+        }
         onSubmit={(data: SemesterFormData) => {
           if (editingSemester) updateSemester(editingSemester.id, data);
           else createSemester(data);
@@ -1003,7 +1127,7 @@ export default function AcademicYear() {
           editingSemester
             ? {
                 enabled: semesterTargetActive,
-                value: semesterTargetActive ? targetGpaSession?.targetGpa ?? null : null,
+                value: semesterTargetActive ? editingSemesterTargetSession?.targetGpa ?? null : null,
                 locked: semesterTargetLocked,
                 lockedMessage: semesterTargetLocked ? targetGpaLockedMessage : undefined,
                 onSave: handleSemesterTargetSave,
@@ -1020,56 +1144,53 @@ export default function AcademicYear() {
             ? {
                 name: editingSemester.name,
                 ...parseSemesterName(editingSemester.name),
-                startDate: editingSemester.startDate,
-                endDate: editingSemester.endDate,
               }
             : undefined
         }
       />
 
-      <Dialog open={yearEditIndex !== null} onOpenChange={(open) => !open && setYearEditIndex(null)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit year</DialogTitle>
-            <DialogDescription>Update the label shown for this year.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="year-label">Year name</Label>
-            <Input
-              id="year-label"
-              placeholder="Freshman"
-              value={yearEditName}
-              onChange={(event) => setYearEditName(event.target.value)}
-            />
-          </div>
-          <DialogFooter className="flex w-full flex-col gap-2 sm:flex-row sm:justify-between">
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={() => {
-                if (yearEditIndex !== null) setYearDeleteIndex(yearEditIndex);
-              }}
-              disabled={loading}
-            >
-              Delete year
-            </Button>
-            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:justify-end">
-              <Button type="button" variant="outline" onClick={() => setYearEditIndex(null)} disabled={loading}>
-                Cancel
-              </Button>
-              <Button type="button" onClick={handleSaveYearLabel} disabled={loading}>
-                Save
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <YearModal
+        open={yearModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setYearModalOpen(false);
+            setEditingYear(null);
+          }
+        }}
+        targetGpa={
+          editingYear
+            ? {
+                enabled: activeYearTarget,
+                value: activeYearTarget ? editingYearTargetSession?.targetGpa ?? null : null,
+                locked: yearTargetLocked,
+                lockedMessage: yearTargetLocked ? targetGpaLockedMessage : undefined,
+                onSave: handleYearTargetSave,
+              }
+            : undefined
+        }
+        initialData={
+          editingYear
+            ? {
+                name: editingYear.name,
+                startDate: editingYear.startDate.slice(0, 10),
+                endDate: editingYear.endDate.slice(0, 10),
+              }
+            : undefined
+        }
+        onSubmit={(data: YearFormData) => {
+          if (editingYear) updateYear(editingYear.id, data);
+          else createYear(data);
+        }}
+        onDelete={
+          editingYear ? () => deleteYear(editingYear) : undefined
+        }
+      />
 
-      <AlertDialog open={yearDeleteIndex !== null} onOpenChange={(open) => !open && setYearDeleteIndex(null)}>
+      <AlertDialog open={!!yearDeleteTarget} onOpenChange={(open) => !open && setYearDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Delete {yearDeleteIndex !== null ? yearLabels[yearDeleteIndex] ?? "this year" : "this year"}?
+              Delete {yearDeleteTarget?.name ?? "this year"}?
             </AlertDialogTitle>
             <AlertDialogDescription>
               This deletes every semester in the year and all related courses and assignments. This action cannot be
@@ -1080,7 +1201,12 @@ export default function AcademicYear() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive hover:bg-destructive/90"
-              onClick={handleDeleteYear}
+              onClick={() => {
+                if (yearDeleteTarget) {
+                  void deleteYear(yearDeleteTarget);
+                  setYearDeleteTarget(null);
+                }
+              }}
             >
               Delete year
             </AlertDialogAction>

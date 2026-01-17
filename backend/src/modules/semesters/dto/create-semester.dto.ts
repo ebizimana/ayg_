@@ -1,13 +1,19 @@
-import { IsDateString, IsNotEmpty, IsString } from 'class-validator';
+import { IsDateString, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class CreateSemesterDto {
+  @IsString()
+  @IsNotEmpty()
+  yearId!: string;
+
   @IsString()
   @IsNotEmpty()
   name!: string;       // e.g. "Fall 2025"
 
   @IsDateString()
-  startDate!: string;  // ISO string
+  @IsOptional()
+  startDate?: string;  // ISO string
 
   @IsDateString()
-  endDate!: string;    // ISO string
+  @IsOptional()
+  endDate?: string;    // ISO string
 }

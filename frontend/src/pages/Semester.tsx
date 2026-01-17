@@ -43,7 +43,14 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { http } from "@/lib/http";
 
-type Semester = { id: string; name: string; startDate: string; endDate: string };
+type Semester = {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  yearId: string;
+  year?: { id: string; name: string; startDate: string; endDate: string };
+};
 type Course = {
   id: string;
   name: string;
@@ -83,20 +90,10 @@ type TargetGpaSession = {
   id: string;
   scope: "CAREER" | "YEAR" | "SEMESTER";
   targetGpa: number;
-  yearIndex?: number | null;
+  yearId?: string | null;
   semesterId?: string | null;
   maxAchievableGpa?: number | null;
   gpaShortfall?: number | null;
-};
-
-const semesterSeasons = ["Fall", "Spring", "Summer", "Winter"];
-const yearLabels = ["Freshman", "Sophomore", "Junior", "Senior"];
-
-const parseSemesterName = (name: string) => {
-  const [maybeSeason, maybeYear] = name.split(" ");
-  const season = semesterSeasons.includes(maybeSeason) ? maybeSeason : "Fall";
-  const year = /^\d{4}$/.test(maybeYear ?? "") ? maybeYear : String(new Date().getFullYear());
-  return { season, year };
 };
 
 const LAST_SEMESTER_KEY = "ayg_last_semester_id";
@@ -117,7 +114,7 @@ export default function Semester() {
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [draggingCourseId, setDraggingCourseId] = useState<string | null>(null);
   const lastCourseDropRef = useRef<number>(0);
-  const [targetGpaSession, setTargetGpaSession] = useState<TargetGpaSession | null>(null);
+  const [targetGpaSessions, setTargetGpaSessions] = useState<TargetGpaSession[]>([]);
   const [semesterTargetModalOpen, setSemesterTargetModalOpen] = useState(false);
 
   const token = useMemo(() => localStorage.getItem("ayg_token"), []);
@@ -174,8 +171,8 @@ export default function Semester() {
 
   const loadTargetGpaSession = async () => {
     try {
-      const session = await http<TargetGpaSession | null>("/target-gpa/active");
-      setTargetGpaSession(session ?? null);
+      const sessions = await http<TargetGpaSession[]>("/target-gpa/active");
+      setTargetGpaSessions(sessions ?? []);
     } catch (err) {
       toast({
         title: "Failed to load target GPA",
@@ -511,55 +508,39 @@ export default function Semester() {
     (c) => c.actualPercentGrade !== null && c.actualPercentGrade !== undefined,
   ).length;
   const ungradedCourseCount = Math.max(courseCount - gradedCourseCount, 0);
-  const semesterName = semesters.find((s) => s.id === selectedSemesterId)?.name ?? "Select semester";
-  const yearContext = useMemo(() => {
-    if (!selectedSemesterId || !semesters.length) {
-      return { label: "Academic Year", index: null as number | null };
-    }
-    const sorted = [...semesters].sort(
-      (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
-    );
-    const groups: Semester[][] = [];
-    let current: Semester[] = [];
-    sorted.forEach((semester) => {
-      const { season } = parseSemesterName(semester.name);
-      if (season === "Fall" && current.length > 0) {
-        groups.push(current);
-        current = [];
-      }
-      current.push(semester);
-    });
-    if (current.length) groups.push(current);
-    if (groups.length > yearLabels.length) {
-      const overflow = groups.slice(yearLabels.length - 1).flat();
-      groups.splice(yearLabels.length - 1);
-      groups.push(overflow);
-    }
-    const index = groups.findIndex((group) => group.some((semester) => semester.id === selectedSemesterId));
-    return {
-      label: yearLabels[index] ?? "Academic Year",
-      index: index >= 0 ? index : null,
-    };
-  }, [semesters, selectedSemesterId]);
-  const yearLabel = yearContext.label;
-  const semesterTargetActive =
-    targetGpaSession?.scope === "SEMESTER" && targetGpaSession.semesterId === selectedSemesterId;
-  const semesterTargetLocked = !!targetGpaSession && !semesterTargetActive;
-  const targetGpaLockedMessage = targetGpaSession
-    ? targetGpaSession.scope === "CAREER"
-      ? "Career Target GPA is already active."
-      : targetGpaSession.scope === "YEAR"
-        ? "Year Target GPA is already active."
-        : "Semester Target GPA is already active."
-    : "";
+  const selectedSemester = semesters.find((s) => s.id === selectedSemesterId) ?? null;
+  const semesterName = selectedSemester?.name ?? "Select semester";
+  const yearLabel = selectedSemester?.year?.name ?? "Academic Year";
+  const selectedYearId = selectedSemester?.yearId ?? null;
+  const careerTargetSession =
+    targetGpaSessions.find((session) => session.scope === "CAREER") ?? null;
+  const yearTargetSession =
+    selectedYearId
+      ? targetGpaSessions.find(
+          (session) => session.scope === "YEAR" && session.yearId === selectedYearId,
+        ) ?? null
+      : null;
+  const semesterTargetSession =
+    selectedSemesterId
+      ? targetGpaSessions.find(
+          (session) => session.scope === "SEMESTER" && session.semesterId === selectedSemesterId,
+        ) ?? null
+      : null;
+  const semesterTargetActive = !!semesterTargetSession;
+  const semesterTargetLocked = !semesterTargetActive && !!(careerTargetSession || yearTargetSession);
+  const targetGpaLockedMessage = careerTargetSession
+    ? "Career Target GPA is already active."
+    : yearTargetSession
+      ? "Year Target GPA is already active."
+      : targetGpaSessions.some((session) => session.scope === "SEMESTER")
+        ? "Semester Target GPA is already active."
+        : "";
   const targetGpaLockedForCourses =
-    targetGpaSession?.scope === "CAREER" ||
-    (targetGpaSession?.scope === "SEMESTER" && targetGpaSession.semesterId === selectedSemesterId) ||
-    (targetGpaSession?.scope === "YEAR" && targetGpaSession.yearIndex === yearContext.index);
+    !!careerTargetSession || !!semesterTargetSession || !!yearTargetSession;
   const semesterTargetShortfall =
-    semesterTargetActive ? targetGpaSession?.gpaShortfall ?? null : null;
+    semesterTargetActive ? semesterTargetSession?.gpaShortfall ?? null : null;
   const semesterTargetMax =
-    semesterTargetActive ? targetGpaSession?.maxAchievableGpa ?? null : null;
+    semesterTargetActive ? semesterTargetSession?.maxAchievableGpa ?? null : null;
 
   const signOut = () => {
     localStorage.clear();
@@ -1409,7 +1390,7 @@ export default function Semester() {
         description="Control target grades for this semester."
         toggleLabel="Set Semester GPA"
         enabled={semesterTargetActive}
-        targetGpa={semesterTargetActive ? targetGpaSession?.targetGpa ?? null : null}
+        targetGpa={semesterTargetActive ? semesterTargetSession?.targetGpa ?? null : null}
         locked={semesterTargetLocked}
         lockedMessage={semesterTargetLocked ? targetGpaLockedMessage : undefined}
         onSave={handleSemesterTargetSave}

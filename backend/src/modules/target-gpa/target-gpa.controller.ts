@@ -13,7 +13,7 @@ export class TargetGpaController {
 
   @Get('active')
   getActive(@CurrentUser() user: AuthUser) {
-    return this.targetGpaService.getActiveSession(user.userId);
+    return this.targetGpaService.getActiveSessions(user.userId);
   }
 
   @Post('enable')

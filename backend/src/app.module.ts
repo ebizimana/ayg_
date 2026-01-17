@@ -9,6 +9,7 @@ import { CategoriesModule } from './modules/categories/categories.module';
 import { AssignmentsModule } from './modules/assignments/assignments.module';
 import { GradesModule } from './modules/grades/grades.module';
 import { TargetGpaModule } from './modules/target-gpa/target-gpa.module';
+import { YearsModule } from './modules/years/years.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { TargetGpaModule } from './modules/target-gpa/target-gpa.module';
     AuthModule,
     SemestersModule,
     CoursesModule,
+    YearsModule,
     CategoriesModule,
     AssignmentsModule,
     GradesModule,

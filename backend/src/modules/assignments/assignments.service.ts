@@ -23,7 +23,7 @@ export class AssignmentsService {
     if (!course) throw new NotFoundException('Course not found');
 
     const semester = await this.prisma.semester.findFirst({
-      where: { id: course.semesterId, userId },
+      where: { id: course.semesterId, year: { userId } },
       select: { id: true },
     });
 
@@ -123,7 +123,7 @@ export class AssignmentsService {
     const assignments = await this.prisma.assignment.findMany({
       where: {
         id: { in: orderedIds },
-        category: { course: { semester: { userId } } },
+        category: { course: { semester: { year: { userId } } } },
       },
       select: { id: true, category: { select: { courseId: true } } },
     });

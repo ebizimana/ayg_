@@ -86,7 +86,13 @@ type CourseResponse = {
   isCompleted?: boolean;
   semesterId?: string;
 };
-type SemesterResponse = { id: string; name: string; startDate: string };
+type SemesterResponse = {
+  id: string;
+  name: string;
+  startDate: string;
+  yearId: string;
+  year?: { id: string; name: string; startDate: string; endDate: string };
+};
 type Category = { id: string; name: string; weightPercent: number; dropLowest?: number; assignmentsCount?: number };
 type GradePlan = {
   actualPercent: number | null;
@@ -98,7 +104,7 @@ type TargetGpaSession = {
   id: string;
   scope: "CAREER" | "YEAR" | "SEMESTER";
   targetGpa: number;
-  yearIndex?: number | null;
+  yearId?: string | null;
   semesterId?: string | null;
 };
 
@@ -111,8 +117,6 @@ const gradeTargets: Record<string, number> = {
 };
 
 const LAST_SEMESTER_KEY = "ayg_last_semester_id";
-const semesterSeasons = ["Fall", "Spring", "Summer", "Winter"];
-const yearLabels = ["Freshman", "Sophomore", "Junior", "Senior"];
 
 const gradeBadgeClasses: Record<string, string> = {
   A: "from-primary to-primary-dark",
@@ -124,39 +128,8 @@ const gradeBadgeClasses: Record<string, string> = {
 
 const options = ["A", "B", "C", "D", "F"];
 
-const parseSemesterName = (name: string) => {
-  const [maybeSeason] = name.split(" ");
-  const season = semesterSeasons.includes(maybeSeason) ? maybeSeason : "Fall";
-  return { season };
-};
-
-const groupSemesters = (semesters: SemesterResponse[]) => {
-  const sorted = [...semesters].sort(
-    (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
-  );
-  const groups: SemesterResponse[][] = [];
-  let current: SemesterResponse[] = [];
-  sorted.forEach((semester) => {
-    const { season } = parseSemesterName(semester.name);
-    if (season === "Fall" && current.length > 0) {
-      groups.push(current);
-      current = [];
-    }
-    current.push(semester);
-  });
-  if (current.length) groups.push(current);
-  if (groups.length > yearLabels.length) {
-    const overflow = groups.slice(yearLabels.length - 1).flat();
-    return [...groups.slice(0, yearLabels.length - 1), overflow];
-  }
-  return groups;
-};
-
-const getYearIndexForSemester = (semesters: SemesterResponse[], semesterId: string) => {
-  const groups = groupSemesters(semesters);
-  const index = groups.findIndex((group) => group.some((semester) => semester.id === semesterId));
-  return index >= 0 ? index : null;
-};
+const getYearForSemester = (semesters: SemesterResponse[], semesterId: string) =>
+  semesters.find((semester) => semester.id === semesterId)?.year ?? null;
 
 const toForm = (assignment: Assignment): AssignmentForm => ({
   id: assignment.id,
@@ -201,7 +174,7 @@ export default function CoursePage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [editCourseOpen, setEditCourseOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [targetGpaSession, setTargetGpaSession] = useState<TargetGpaSession | null>(null);
+  const [targetGpaSessions, setTargetGpaSessions] = useState<TargetGpaSession[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<"name" | "earned" | "expected" | "category" | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -277,11 +250,11 @@ export default function CoursePage() {
     if (!courseId) return;
     setLoading(true);
     try {
-      const [course, cats, semesters, targetSession] = await Promise.all([
+      const [course, cats, semesters, targetSessions] = await Promise.all([
         http<CourseResponse>(`/courses/${courseId}`),
         http<any[]>(`/courses/${courseId}/categories`),
         http<SemesterResponse[]>("/semesters"),
-        http<TargetGpaSession | null>("/target-gpa/active"),
+        http<TargetGpaSession[]>("/target-gpa/active"),
       ]);
       if (course?.name) setCourseName(course.name);
       if (course?.credits !== undefined) setCourseCredits(course.credits);
@@ -291,7 +264,7 @@ export default function CoursePage() {
       if (course?.gradingMethod) setCourseGradingMethod(course.gradingMethod);
       if (course?.isCompleted !== undefined) setCourseCompleted(course.isCompleted);
       if (course?.semesterId) setCourseSemesterId(course.semesterId);
-      setTargetGpaSession(targetSession ?? null);
+      setTargetGpaSessions(targetSessions ?? []);
       if ((course as any)?.actualPercentGrade !== undefined && (course as any)?.actualPercentGrade !== null) {
         setActualPercent((course as any).actualPercentGrade / 100);
       }
@@ -372,15 +345,28 @@ export default function CoursePage() {
     void loadData();
   }, [loadData]);
 
-  const courseYearIndex = useMemo(() => {
+  const courseYear = useMemo(() => {
     if (!courseSemesterId || !semesterList.length) return null;
-    return getYearIndexForSemester(semesterList, courseSemesterId);
+    return getYearForSemester(semesterList, courseSemesterId);
   }, [courseSemesterId, semesterList]);
+  const courseYearId = courseYear?.id ?? null;
 
+  const careerTargetSession =
+    targetGpaSessions.find((session) => session.scope === "CAREER") ?? null;
+  const yearTargetSession =
+    courseYearId
+      ? targetGpaSessions.find(
+          (session) => session.scope === "YEAR" && session.yearId === courseYearId,
+        ) ?? null
+      : null;
+  const semesterTargetSession =
+    courseSemesterId
+      ? targetGpaSessions.find(
+          (session) => session.scope === "SEMESTER" && session.semesterId === courseSemesterId,
+        ) ?? null
+      : null;
   const targetGpaLockedForCourse =
-    targetGpaSession?.scope === "CAREER" ||
-    (targetGpaSession?.scope === "SEMESTER" && targetGpaSession.semesterId === courseSemesterId) ||
-    (targetGpaSession?.scope === "YEAR" && targetGpaSession.yearIndex === courseYearIndex);
+    !!careerTargetSession || !!yearTargetSession || !!semesterTargetSession;
 
   const totalMax = useMemo(() => assignments.reduce((sum, a) => sum + a.max, 0), [assignments]);
   const earnedPoints = useMemo(

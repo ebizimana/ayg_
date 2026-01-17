@@ -1,11 +1,6 @@
 import { IsDateString, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
-export class UpdateSemesterDto {
-  @IsString()
-  @IsNotEmpty()
-  @IsOptional()
-  yearId?: string;
-
+export class UpdateYearDto {
   @IsString()
   @IsNotEmpty()
   @IsOptional()

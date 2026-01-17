@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsIn, IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class EnableTargetGpaDto {
   @IsIn(['CAREER', 'YEAR', 'SEMESTER'])
@@ -10,9 +10,8 @@ export class EnableTargetGpaDto {
   targetGpa!: number;
 
   @IsOptional()
-  @IsInt()
-  @Min(0)
-  yearIndex?: number;
+  @IsString()
+  yearId?: string;
 
   @IsOptional()
   @IsString()

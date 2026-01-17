@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { EnableTargetGpaDto } from './dto/enable-target-gpa.dto';
 import { DisableTargetGpaDto } from './dto/disable-target-gpa.dto';
-import { TargetGpaScope } from '@prisma/client';
+import { TargetGpaScope, type TargetGpaSession } from '@prisma/client';
 
 const gradePoints: Record<string, number> = {
   A: 4,
@@ -13,9 +13,6 @@ const gradePoints: Record<string, number> = {
 };
 
 const gradeOrder = ['D', 'C', 'B', 'A'] as const;
-const semesterSeasons = ['Fall', 'Spring', 'Summer', 'Winter'];
-const yearLabels = ['Freshman', 'Sophomore', 'Junior', 'Senior'];
-
 type CourseData = {
   id: string;
   credits: number;
@@ -29,6 +26,7 @@ type SemesterData = {
   id: string;
   name: string;
   startDate: Date;
+  yearId: string;
 };
 
 type ComputeResult = {
@@ -41,31 +39,128 @@ type ComputeResult = {
 export class TargetGpaService {
   constructor(private prisma: PrismaService) {}
 
-  async getActiveSession(userId: string) {
-    const session = await this.prisma.targetGpaSession.findFirst({
+  async getActiveSessions(userId: string) {
+    return this.prisma.targetGpaSession.findMany({
       where: { userId, disabledAt: null },
       orderBy: { createdAt: 'desc' },
     });
-    return session;
+  }
+
+  async hasActiveCareerTarget(userId: string) {
+    const session = await this.getActiveCareerSession(userId);
+    return !!session;
+  }
+
+  async hasActiveYearTarget(userId: string, yearId: string) {
+    const session = await this.getActiveYearSession(userId, yearId);
+    return !!session;
+  }
+
+  async hasActiveSemesterTarget(userId: string, semesterId: string) {
+    const session = await this.getActiveSemesterSession(userId, semesterId);
+    return !!session;
+  }
+
+  async isTargetActiveForSemester(userId: string, semesterId: string) {
+    const career = await this.getActiveCareerSession(userId);
+    if (career) return true;
+    const semester = await this.prisma.semester.findFirst({
+      where: { id: semesterId, year: { userId } },
+      select: { yearId: true },
+    });
+    if (!semester) return false;
+    const yearTarget = await this.getActiveYearSession(userId, semester.yearId);
+    if (yearTarget) return true;
+    const semesterTarget = await this.getActiveSemesterSession(userId, semesterId);
+    return !!semesterTarget;
+  }
+
+  private async getActiveCareerSession(userId: string) {
+    return this.prisma.targetGpaSession.findFirst({
+      where: { userId, disabledAt: null, scope: 'CAREER' },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  private async getActiveYearSession(userId: string, yearId: string) {
+    return this.prisma.targetGpaSession.findFirst({
+      where: { userId, disabledAt: null, scope: 'YEAR', yearId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  private async getActiveSemesterSession(userId: string, semesterId: string) {
+    return this.prisma.targetGpaSession.findFirst({
+      where: { userId, disabledAt: null, scope: 'SEMESTER', semesterId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  private async getActiveSemesterSessionsForYear(userId: string, yearId: string) {
+    return this.prisma.targetGpaSession.findMany({
+      where: {
+        userId,
+        disabledAt: null,
+        scope: 'SEMESTER',
+        semester: { yearId },
+      },
+    });
   }
 
   async enable(userId: string, dto: EnableTargetGpaDto) {
-    const existing = await this.getActiveSession(userId);
-    if (existing) {
-      throw new BadRequestException('Target GPA already enabled.');
-    }
-
     const scope = dto.scope as TargetGpaScope;
-    if (scope === 'YEAR' && (dto.yearIndex === undefined || dto.yearIndex === null)) {
-      throw new BadRequestException('Year index is required.');
+    const activeCareer = await this.getActiveCareerSession(userId);
+
+    if (scope === 'YEAR' && !dto.yearId) {
+      throw new BadRequestException('Year is required.');
     }
     if (scope === 'SEMESTER' && !dto.semesterId) {
       throw new BadRequestException('Semester is required.');
     }
-    if (scope === 'CAREER' && (dto.yearIndex !== undefined || dto.semesterId)) {
+    if (scope === 'CAREER' && (dto.yearId || dto.semesterId)) {
       throw new BadRequestException('Career scope does not support year or semester filters.');
     }
-    const { courses, semesters } = await this.getCoursesForScope(userId, scope, dto.yearIndex, dto.semesterId);
+
+    if (scope === 'CAREER') {
+      const existing = await this.getActiveSessions(userId);
+      if (existing.length) {
+        throw new BadRequestException('Disable all active targets before enabling Career GPA.');
+      }
+    }
+
+    if (scope === 'YEAR') {
+      if (activeCareer) {
+        throw new BadRequestException('Disable Career GPA before enabling a Year target.');
+      }
+      const existingYear = await this.getActiveYearSession(userId, dto.yearId!);
+      if (existingYear) {
+        throw new BadRequestException('Target GPA already enabled for this year.');
+      }
+      const semesterConflicts = await this.getActiveSemesterSessionsForYear(userId, dto.yearId!);
+      if (semesterConflicts.length) {
+        throw new BadRequestException('Disable all semester targets in this year before enabling a Year target.');
+      }
+    }
+
+    if (scope === 'SEMESTER') {
+      if (activeCareer) {
+        throw new BadRequestException('Disable Career GPA before enabling a Semester target.');
+      }
+      const existingSemester = await this.getActiveSemesterSession(userId, dto.semesterId!);
+      if (existingSemester) {
+        throw new BadRequestException('Target GPA already enabled for this semester.');
+      }
+      const semester = await this.prisma.semester.findFirst({
+        where: { id: dto.semesterId!, year: { userId } },
+        select: { yearId: true },
+      });
+      if (!semester) throw new BadRequestException('Semester not found.');
+      const yearSession = await this.getActiveYearSession(userId, semester.yearId);
+      if (yearSession) {
+        throw new BadRequestException('Disable the Year target before enabling a Semester target in this year.');
+      }
+    }
+    const { courses, semesters } = await this.getCoursesForScope(userId, scope, dto.yearId, dto.semesterId);
     if (!courses.length) {
       throw new BadRequestException('No courses available for this scope.');
     }
@@ -82,7 +177,7 @@ export class TargetGpaService {
           userId,
           scope,
           targetGpa: dto.targetGpa,
-          yearIndex: dto.yearIndex ?? null,
+          yearId: dto.yearId ?? null,
           semesterId: dto.semesterId ?? null,
           maxAchievableGpa: compute.maxAchievableGpa,
           gpaShortfall: compute.gpaShortfall,
@@ -116,18 +211,22 @@ export class TargetGpaService {
   }
 
   async disable(userId: string, dto?: DisableTargetGpaDto) {
-    const session = await this.getActiveSession(userId);
-    if (!session) return { disabled: false };
+    if (!dto?.scope) {
+      throw new BadRequestException('Target GPA scope is required.');
+    }
 
-    if (dto?.scope && dto.scope !== session.scope) {
-      throw new BadRequestException('Target GPA scope does not match.');
+    let session: TargetGpaSession | null = null;
+    if (dto.scope === 'CAREER') {
+      session = await this.getActiveCareerSession(userId);
+    } else if (dto.scope === 'YEAR') {
+      if (!dto.yearId) throw new BadRequestException('Year is required.');
+      session = await this.getActiveYearSession(userId, dto.yearId);
+    } else if (dto.scope === 'SEMESTER') {
+      if (!dto.semesterId) throw new BadRequestException('Semester is required.');
+      session = await this.getActiveSemesterSession(userId, dto.semesterId);
     }
-    if (dto?.scope === 'YEAR' && dto.yearIndex !== undefined && dto.yearIndex !== session.yearIndex) {
-      throw new BadRequestException('Target GPA year does not match.');
-    }
-    if (dto?.scope === 'SEMESTER' && dto.semesterId && dto.semesterId !== session.semesterId) {
-      throw new BadRequestException('Target GPA semester does not match.');
-    }
+
+    if (!session) return { disabled: false };
 
     return this.prisma.$transaction(async (tx) => {
       const snapshots = await tx.targetGpaSnapshot.findMany({
@@ -153,23 +252,38 @@ export class TargetGpaService {
   }
 
   async recomputeForCourseChange(userId: string, semesterId: string | null) {
-    const session = await this.getActiveSession(userId);
-    if (!session) return;
-
-    if (session.scope === 'SEMESTER' && session.semesterId && session.semesterId !== semesterId) {
+    const activeCareer = await this.getActiveCareerSession(userId);
+    if (activeCareer) {
+      await this.recomputeSession(userId, activeCareer);
       return;
     }
 
-    if (session.scope === 'YEAR' && semesterId) {
-      const semesters = await this.getSemestersForUser(userId);
-      const yearIndex = this.getYearIndexForSemester(semesters, semesterId);
-      if (yearIndex === null || yearIndex !== session.yearIndex) {
-        return;
-      }
+    if (!semesterId) return;
+    const semester = await this.prisma.semester.findFirst({
+      where: { id: semesterId, year: { userId } },
+      select: { yearId: true },
+    });
+    if (!semester) return;
+
+    const activeYear = await this.getActiveYearSession(userId, semester.yearId);
+    if (activeYear) {
+      await this.recomputeSession(userId, activeYear);
+      return;
     }
 
-    const scope = session.scope as TargetGpaScope;
-    const { courses } = await this.getCoursesForScope(userId, scope, session.yearIndex ?? undefined, session.semesterId ?? undefined);
+    const activeSemester = await this.getActiveSemesterSession(userId, semesterId);
+    if (activeSemester) {
+      await this.recomputeSession(userId, activeSemester);
+    }
+  }
+
+  private async recomputeSession(userId: string, session: { id: string; scope: TargetGpaScope; yearId: string | null; semesterId: string | null; targetGpa: number; }) {
+    const { courses } = await this.getCoursesForScope(
+      userId,
+      session.scope,
+      session.yearId ?? undefined,
+      session.semesterId ?? undefined,
+    );
     if (!courses.length) return;
 
     const compute = this.computeAssignments(courses, session.targetGpa);
@@ -252,7 +366,7 @@ export class TargetGpaService {
   private async getCoursesForScope(
     userId: string,
     scope: TargetGpaScope,
-    yearIndex?: number,
+    yearId?: string,
     semesterId?: string,
   ) {
     if (scope === 'SEMESTER') {
@@ -272,15 +386,17 @@ export class TargetGpaService {
       return { courses, semesters: [semesterId] };
     }
 
-    const semesters = await this.getSemestersForUser(userId);
     if (scope === 'YEAR') {
-      if (yearIndex === undefined || yearIndex === null) {
-        throw new BadRequestException('Year index is required.');
+      if (!yearId) {
+        throw new BadRequestException('Year is required.');
       }
-      const groups = this.groupSemesters(semesters);
-      const group = groups[yearIndex];
-      if (!group) throw new BadRequestException('Year not found.');
-      const semesterIds = group.map((semester) => semester.id);
+      await this.assertYearOwnership(userId, yearId);
+      const semesterIds = await this.prisma.semester
+        .findMany({
+          where: { yearId },
+          select: { id: true },
+        })
+        .then((rows) => rows.map((row) => row.id));
       const courses = await this.prisma.course.findMany({
         where: { semesterId: { in: semesterIds } },
         select: {
@@ -295,6 +411,7 @@ export class TargetGpaService {
       return { courses, semesters: semesterIds };
     }
 
+    const semesters = await this.getSemestersForUser(userId);
     const semesterIds = semesters.map((semester) => semester.id);
     const courses = await this.prisma.course.findMany({
       where: { semesterId: { in: semesterIds } },
@@ -312,49 +429,27 @@ export class TargetGpaService {
 
   private async getSemestersForUser(userId: string): Promise<SemesterData[]> {
     return this.prisma.semester.findMany({
-      where: { userId },
+      where: { year: { userId } },
       orderBy: { startDate: 'asc' },
-      select: { id: true, name: true, startDate: true },
+      select: { id: true, name: true, startDate: true, yearId: true },
     });
+  }
+
+  private async assertYearOwnership(userId: string, yearId: string) {
+    const year = await this.prisma.year.findFirst({
+      where: { id: yearId, userId },
+      select: { id: true },
+    });
+
+    if (!year) throw new NotFoundException('Year not found');
   }
 
   private async assertSemesterOwnership(userId: string, semesterId: string) {
     const semester = await this.prisma.semester.findFirst({
-      where: { id: semesterId, userId },
+      where: { id: semesterId, year: { userId } },
       select: { id: true },
     });
 
     if (!semester) throw new NotFoundException('Semester not found');
-  }
-
-  private parseSemesterName(name: string) {
-    const [maybeSeason] = name.split(' ');
-    const season = semesterSeasons.includes(maybeSeason) ? maybeSeason : 'Fall';
-    return { season };
-  }
-
-  private groupSemesters(semesters: SemesterData[]) {
-    const groups: SemesterData[][] = [];
-    let current: SemesterData[] = [];
-    semesters.forEach((semester) => {
-      const { season } = this.parseSemesterName(semester.name);
-      if (season === 'Fall' && current.length > 0) {
-        groups.push(current);
-        current = [];
-      }
-      current.push(semester);
-    });
-    if (current.length) groups.push(current);
-    if (groups.length > yearLabels.length) {
-      const overflow = groups.slice(yearLabels.length - 1).flat();
-      return [...groups.slice(0, yearLabels.length - 1), overflow];
-    }
-    return groups;
-  }
-
-  private getYearIndexForSemester(semesters: SemesterData[], semesterId: string) {
-    const groups = this.groupSemesters(semesters);
-    const index = groups.findIndex((group) => group.some((semester) => semester.id === semesterId));
-    return index >= 0 ? index : null;
   }
 }

@@ -4,10 +4,20 @@ import { CreateSemesterDto } from './dto/create-semester.dto';
 import { UpdateSemesterDto } from './dto/update-semester.dto';
 import { computeCoursePlan } from '../courses/grade-plan.util';
 import type { GradeLetter } from '../courses/grade-plan.types';
+import { TargetGpaService } from '../target-gpa/target-gpa.service';
 
 @Injectable()
 export class SemestersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private targetGpaService: TargetGpaService) {}
+
+  private async assertYearOwnership(userId: string, yearId: string) {
+    const year = await this.prisma.year.findFirst({
+      where: { id: yearId, userId },
+      select: { id: true },
+    });
+
+    if (!year) throw new ForbiddenException('Access denied');
+  }
 
   private percentToLetter(percent: number): GradeLetter {
     if (percent >= 90) return 'A';
@@ -50,42 +60,78 @@ export class SemestersService {
   }
 
   async create(userId: string, dto: CreateSemesterDto) {
+    await this.assertYearOwnership(userId, dto.yearId);
+    const year = await this.prisma.year.findUnique({
+      where: { id: dto.yearId },
+      select: { startDate: true, endDate: true },
+    });
+    if (!year) throw new NotFoundException('Year not found');
     return this.prisma.semester.create({
       data: {
-        userId,
+        yearId: dto.yearId,
         name: dto.name,
-        startDate: new Date(dto.startDate),
-        endDate: new Date(dto.endDate),
+        startDate: dto.startDate ? new Date(dto.startDate) : year.startDate,
+        endDate: dto.endDate ? new Date(dto.endDate) : year.endDate,
       },
     });
   }
 
   async findAll(userId: string) {
     return this.prisma.semester.findMany({
-      where: { userId },
+      where: { year: { userId } },
       orderBy: { startDate: 'desc' },
+      include: {
+        year: { select: { id: true, name: true, startDate: true, endDate: true } },
+      },
     });
   }
 
   async findOne(userId: string, id: string) {
-    const semester = await this.prisma.semester.findUnique({ where: { id } });
+    const semester = await this.prisma.semester.findUnique({
+      where: { id },
+      include: { year: { select: { userId: true } } },
+    });
     if (!semester) throw new NotFoundException('Semester not found');
-    if (semester.userId !== userId) throw new ForbiddenException('Access denied');
+    if (semester.year.userId !== userId) throw new ForbiddenException('Access denied');
     return semester;
   }
 
   async update(userId: string, id: string, dto: UpdateSemesterDto) {
     // Reuse ownership check
     await this.findOne(userId, id);
+    let yearDates: { startDate: Date; endDate: Date } | null = null;
+    if (dto.yearId) {
+      await this.assertYearOwnership(userId, dto.yearId);
+      yearDates = await this.prisma.year.findUnique({
+        where: { id: dto.yearId },
+        select: { startDate: true, endDate: true },
+      });
+      if (!yearDates) throw new NotFoundException('Year not found');
+    }
 
-    return this.prisma.semester.update({
+    const updated = await this.prisma.semester.update({
       where: { id },
       data: {
+        ...(dto.yearId !== undefined ? { yearId: dto.yearId } : {}),
         ...(dto.name !== undefined ? { name: dto.name } : {}),
-        ...(dto.startDate !== undefined ? { startDate: new Date(dto.startDate) } : {}),
-        ...(dto.endDate !== undefined ? { endDate: new Date(dto.endDate) } : {}),
+        ...(yearDates ? { startDate: yearDates.startDate, endDate: yearDates.endDate } : {}),
+        ...(dto.startDate !== undefined && !yearDates ? { startDate: new Date(dto.startDate) } : {}),
+        ...(dto.endDate !== undefined && !yearDates ? { endDate: new Date(dto.endDate) } : {}),
       },
     });
+
+    if (dto.yearId) {
+      const yearTarget = await this.prisma.targetGpaSession.findFirst({
+        where: { scope: 'YEAR', yearId: dto.yearId, disabledAt: null },
+        select: { id: true },
+      });
+      if (yearTarget) {
+        await this.targetGpaService.disable(userId, { scope: 'SEMESTER', semesterId: id });
+      }
+      await this.targetGpaService.recomputeForCourseChange(userId, id);
+    }
+
+    return updated;
   }
 
   async remove(userId: string, id: string) {

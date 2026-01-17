@@ -12,14 +12,14 @@ model User {
   email     String     @unique
   password  String
 
-  semesters Semester[]
+  years     Year[]
   targetGpaSessions TargetGpaSession[]
 
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 }
 
-model Semester {
+model Year {
   id        String   @id @default(uuid())
   userId    String
   name      String
@@ -27,13 +27,31 @@ model Semester {
   endDate   DateTime
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  courses   Course[]
+  semesters Semester[]
   targetGpaSessions TargetGpaSession[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+  @@index([startDate])
+}
+
+model Semester {
+  id        String   @id @default(uuid())
+  yearId    String
+  name      String
+  startDate DateTime
+  endDate   DateTime
+
+  year      Year     @relation(fields: [yearId], references: [id], onDelete: Cascade)
+  courses   Course[]
+  targetGpaSessions TargetGpaSession[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([yearId])
 }
 
 model Course {
@@ -81,7 +99,7 @@ model TargetGpaSession {
   userId          String
   scope           TargetGpaScope
   targetGpa       Float
-  yearIndex       Int?
+  yearId          String?
   semesterId      String?
   maxAchievableGpa Float?
   gpaShortfall    Float?
@@ -89,11 +107,13 @@ model TargetGpaSession {
   disabledAt      DateTime?
 
   user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  year            Year?           @relation(fields: [yearId], references: [id], onDelete: Cascade)
   semester        Semester?       @relation(fields: [semesterId], references: [id], onDelete: Cascade)
   snapshots       TargetGpaSnapshot[]
 
   @@index([userId])
   @@index([scope])
+  @@index([yearId])
   @@index([semesterId])
 }
 
