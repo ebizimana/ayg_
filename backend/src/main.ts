@@ -10,8 +10,15 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  const port = Number(process.env.PORT) || 3000;
+  const corsOrigin = process.env.CORS_ORIGIN;
+  const origin =
+    corsOrigin?.trim()
+      ? corsOrigin.split(',').map((value) => value.trim())
+      : true;
+
   app.enableCors({
-    origin: true, // allow all in dev; adjust for prod
+    origin, // allow all in dev; set CORS_ORIGIN in prod
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
@@ -31,6 +38,6 @@ async function bootstrap() {
   const httpAdapterHost = app.get(HttpAdapterHost);
   app.useGlobalFilters(new AllExceptionsFilter(httpAdapterHost));
 
-  await app.listen(3000);
+  await app.listen(port);
 }
 bootstrap();

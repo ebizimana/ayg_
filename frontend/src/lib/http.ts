@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+const RAW_API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+const API_BASE = RAW_API_BASE.replace(/\/+$/, "");
 
 function authHeaders() {
   const token = localStorage.getItem("ayg_token");

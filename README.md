@@ -35,5 +35,26 @@ Other scripts: `npm run build`, `npm run preview`, `npm run lint`.
 - Current focus: completing academic models, then grade and GPA engines.
 - Planned: what-if grade simulations, GPA projections, and integrations (Canvas/Blackboard).
 
+## Deployment (Fly.io)
+### Backend (NestJS)
+1) Install the Fly CLI and sign in: `flyctl auth login`
+2) From `backend/`, set your app name in `fly.toml` (replace `ayg-backend`)
+3) Set secrets (example):
+   - `flyctl secrets set DATABASE_URL="postgres://..."`
+   - `flyctl secrets set JWT_SECRET="your_strong_secret"`
+   - `flyctl secrets set CORS_ORIGIN="https://your-frontend-domain.com"`
+4) Deploy: `flyctl deploy`
+5) Check health: `flyctl status` and `https://<your-backend-domain>/health`
+
+### Frontend (Vite)
+1) From `frontend/`, set your app name in `fly.toml` (replace `ayg-frontend`)
+2) Set the API URL in `frontend/fly.toml` under `[build.args] VITE_API_URL`
+3) Deploy: `flyctl deploy`
+4) Visit the generated Fly URL for the frontend
+
+Notes:
+- `backend/fly.toml` runs `npx prisma migrate deploy` on release.
+- The frontend build arg is required because Vite bakes `VITE_API_URL` at build time.
+
 ## License
 TBD (MIT planned).
