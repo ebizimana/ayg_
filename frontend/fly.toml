@@ -10,9 +10,9 @@ primary_region = 'iad'
   dockerfile = 'Dockerfile'
 
   [build.args]
-    VITE_API_URL = 'https://aygrade-backend.fly.dev'
-    VITE_STRIPE_PUBLISHABLE_KEY="pk_live_51Sr3GPFqbEZQqsyFMFkUfepui8YCdQkdzJ1r7NMEAefIhYPKQ4sfnnCFNIyX9bxiT7BXo9xxeZtLrhVy1nZwNgmb00rix1shio"
-    VITE_STRIPE_PRICING_TABLE_ID="prctbl_1Sr4L2FqbEZQqsyFvmb2pcsZ"
+    VITE_API_URL = "https://aygrade-backend.fly.dev"
+    VITE_STRIPE_PUBLISHABLE_KEY= "pk_live_51Sr3GPFqbEZQqsyFMFkUfepui8YCdQkdzJ1r7NMEAefIhYPKQ4sfnnCFNIyX9bxiT7BXo9xxeZtLrhVy1nZwNgmb00rix1shio"
+    VITE_STRIPE_PRICING_TABLE_ID= "prctbl_1Sr4L2FqbEZQqsyFvmb2pcsZ"
 
 [http_service]
   internal_port = 80
