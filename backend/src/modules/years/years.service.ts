@@ -2,10 +2,24 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateYearDto } from './dto/create-year.dto';
 import { UpdateYearDto } from './dto/update-year.dto';
+import { UsersService } from '../users/users.service';
+import { FREE_LIMITS, isFreeTier } from '../../common/tier/tier.constants';
 
 @Injectable()
 export class YearsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private usersService: UsersService,
+  ) {}
+
+  private async getFreeAllowedYearId(userId: string) {
+    const year = await this.prisma.year.findFirst({
+      where: { userId },
+      orderBy: { startDate: 'asc' },
+      select: { id: true },
+    });
+    return year?.id ?? null;
+  }
 
   private async assertYearOwnership(userId: string, yearId: string) {
     const year = await this.prisma.year.findFirst({
@@ -17,6 +31,13 @@ export class YearsService {
   }
 
   async create(userId: string, dto: CreateYearDto) {
+    const tier = await this.usersService.getTier(userId);
+    if (isFreeTier(tier)) {
+      const count = await this.prisma.year.count({ where: { userId } });
+      if (count >= FREE_LIMITS.years) {
+        throw new ForbiddenException('Free tier allows 1 year.');
+      }
+    }
     return this.prisma.year.create({
       data: {
         userId,
@@ -46,6 +67,13 @@ export class YearsService {
 
   async update(userId: string, id: string, dto: UpdateYearDto) {
     await this.assertYearOwnership(userId, id);
+    const tier = await this.usersService.getTier(userId);
+    if (isFreeTier(tier)) {
+      const allowedId = await this.getFreeAllowedYearId(userId);
+      if (allowedId && allowedId !== id) {
+        throw new ForbiddenException('Upgrade to edit additional years.');
+      }
+    }
     return this.prisma.year.update({
       where: { id },
       data: {
@@ -58,6 +86,10 @@ export class YearsService {
 
   async remove(userId: string, id: string) {
     await this.assertYearOwnership(userId, id);
+    const tier = await this.usersService.getTier(userId);
+    if (isFreeTier(tier)) {
+      throw new ForbiddenException('Upgrade to delete years.');
+    }
     return this.prisma.year.delete({ where: { id } });
   }
 }

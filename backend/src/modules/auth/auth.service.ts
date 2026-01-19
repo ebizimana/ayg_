@@ -19,7 +19,7 @@ export class AuthService {
     const hashed = await bcrypt.hash(password, 10);
     const user = await this.usersService.create(email, hashed);
 
-    return this.signToken(user.id, user.email);
+    return this.signToken(user.id, user.email, user.tier);
   }
 
   async login(email: string, password: string) {
@@ -33,14 +33,14 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    return this.signToken(user.id, user.email);
+    return this.signToken(user.id, user.email, user.tier);
   }
 
-private signToken(userId: string, email: string) {
-  return {
-    user: { id: userId, email },
-    accessToken: this.jwtService.sign({ sub: userId, email }),
-  };
-}
+  private signToken(userId: string, email: string, tier: string) {
+    return {
+      user: { id: userId, email, tier },
+      accessToken: this.jwtService.sign({ sub: userId, email }),
+    };
+  }
 
 }

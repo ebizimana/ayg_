@@ -34,6 +34,8 @@ interface CourseModalProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: CourseFormData) => void;
   onDelete?: () => void | Promise<void>;
+  deleteDisabled?: boolean;
+  deleteDisabledMessage?: string;
   targetGpaLocked?: boolean;
   initialData?: CourseFormData;
 }
@@ -58,6 +60,8 @@ export function CourseModal({
   onOpenChange,
   onSubmit,
   onDelete,
+  deleteDisabled,
+  deleteDisabledMessage,
   targetGpaLocked,
   initialData,
 }: CourseModalProps) {
@@ -223,9 +227,19 @@ export function CourseModal({
           </div>
           <DialogFooter className="flex w-full flex-row items-center justify-between gap-2 sm:justify-between sm:space-x-0">
             {initialData && onDelete ? (
-              <Button type="button" variant="destructive" onClick={() => setConfirmDeleteOpen(true)}>
-                Delete Course
-              </Button>
+              <div className="flex flex-col items-start gap-1">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => setConfirmDeleteOpen(true)}
+                  disabled={deleteDisabled}
+                >
+                  Delete Course
+                </Button>
+                {deleteDisabled && deleteDisabledMessage ? (
+                  <span className="text-xs text-muted-foreground">{deleteDisabledMessage}</span>
+                ) : null}
+              </div>
             ) : (
               <span />
             )}

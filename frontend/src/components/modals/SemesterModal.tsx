@@ -34,6 +34,8 @@ interface SemesterModalProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: SemesterFormData) => void;
   onDelete?: () => void | Promise<void>;
+  deleteDisabled?: boolean;
+  deleteDisabledMessage?: string;
   disabledSeasons?: string[];
   targetGpa?: {
     enabled: boolean;
@@ -57,6 +59,8 @@ export function SemesterModal({
   onOpenChange,
   onSubmit,
   onDelete,
+  deleteDisabled,
+  deleteDisabledMessage,
   disabledSeasons = [],
   targetGpa,
   initialData,
@@ -183,13 +187,19 @@ export function SemesterModal({
           </div>
           <DialogFooter className="flex w-full flex-row items-center justify-between gap-2 sm:justify-between sm:space-x-0">
             {initialData && onDelete ? (
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={() => setConfirmDeleteOpen(true)}
-              >
-                Delete Semester
-              </Button>
+              <div className="flex flex-col items-start gap-1">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => setConfirmDeleteOpen(true)}
+                  disabled={deleteDisabled}
+                >
+                  Delete Semester
+                </Button>
+                {deleteDisabled && deleteDisabledMessage ? (
+                  <span className="text-xs text-muted-foreground">{deleteDisabledMessage}</span>
+                ) : null}
+              </div>
             ) : (
               <span />
             )}

@@ -24,12 +24,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { SemesterModal, TargetGpaModal, YearModal, type SemesterFormData, type YearFormData } from "@/components/modals";
+import { UpgradeDialog } from "@/components/UpgradeDialog";
 import { useToast } from "@/hooks/use-toast";
+import { getStoredTier, useUserProfile, type UserTier } from "@/hooks/use-user-profile";
 import { http } from "@/lib/http";
-import { GraduationCap, Plus, Bell, User, Settings, LogOut, ChevronDown, Menu, X, MoreVertical } from "lucide-react";
+import { GraduationCap, Plus, Bell, User, Settings, LogOut, ChevronDown, Menu, X, MoreVertical, Lock } from "lucide-react";
 
-type Semester = { id: string; name: string; startDate: string; endDate: string; yearId: string };
-type Year = { id: string; name: string; startDate: string; endDate: string; semesters: Semester[] };
+type Semester = { id: string; name: string; startDate: string; endDate: string; yearId: string; createdAt?: string };
+type Year = { id: string; name: string; startDate: string; endDate: string; semesters: Semester[]; createdAt?: string };
 type Course = {
   id: string;
   name: string;
@@ -37,6 +39,9 @@ type Course = {
   credits: number;
   desiredLetterGrade: string;
   actualLetterGrade?: string | null;
+  sortOrder?: number;
+  createdAt?: string;
+  isDemo?: boolean;
 };
 type TargetGpaSession = {
   id: string;
@@ -93,6 +98,7 @@ const calculateGpa = (courses: Course[], gradeAccessor: (course: Course) => stri
 export default function AcademicYear() {
   const { toast } = useToast();
   const nav = useNavigate();
+  const { profile, refresh: refreshProfile } = useUserProfile();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [editingSemester, setEditingSemester] = useState<Semester | null>(null);
@@ -107,8 +113,11 @@ export default function AcademicYear() {
   const [yearModalOpen, setYearModalOpen] = useState(false);
   const [yearDeleteTarget, setYearDeleteTarget] = useState<Year | null>(null);
   const [draggedSemesterId, setDraggedSemesterId] = useState<string | null>(null);
+  const [upgradeDialog, setUpgradeDialog] = useState<{ title: string; description: string } | null>(null);
 
   const token = useMemo(() => localStorage.getItem("ayg_token"), []);
+  const tier: UserTier | null = profile?.tier ?? getStoredTier();
+  const isFree = tier === "FREE";
 
   useEffect(() => {
     if (!token) {
@@ -127,6 +136,22 @@ export default function AcademicYear() {
         variant: "destructive",
       });
       return;
+    }
+    if (isFree) {
+      if (totalSemesters >= semesterLimit) {
+        openUpgradeDialog(
+          "Semester limit reached",
+          "Free tier allows 1 semester. Upgrade to add more.",
+        );
+        return;
+      }
+      if (allowedYearId && activeYearId !== allowedYearId) {
+        openUpgradeDialog(
+          "Upgrade to add semesters",
+          "Free tier limits semesters to your first year.",
+        );
+        return;
+      }
     }
     setLoading(true);
     try {
@@ -151,6 +176,7 @@ export default function AcademicYear() {
         ),
       );
       setCoursesBySemester((prev) => ({ ...prev, [created.id]: [] }));
+      void refreshProfile();
       toast({ title: "Semester added", description: created.name });
     } catch (err) {
       toast({
@@ -164,6 +190,13 @@ export default function AcademicYear() {
   };
 
   const updateSemester = async (semesterId: string, form: SemesterFormData) => {
+    if (isFree && lockedSemesterIds.has(semesterId)) {
+      openUpgradeDialog(
+        "Semester locked on Free",
+        "Upgrade to edit additional semesters.",
+      );
+      return;
+    }
     setLoading(true);
     try {
       const parentYear =
@@ -200,6 +233,13 @@ export default function AcademicYear() {
   };
 
   const deleteSemester = async (semesterId: string) => {
+    if (isFree) {
+      openUpgradeDialog(
+        "Delete locked on Free",
+        "Upgrade to delete semesters.",
+      );
+      return;
+    }
     setLoading(true);
     try {
       await http(`/semesters/${semesterId}`, { method: "DELETE" });
@@ -214,6 +254,7 @@ export default function AcademicYear() {
         delete next[semesterId];
         return next;
       });
+      void refreshProfile();
       toast({ title: "Semester deleted" });
     } catch (err) {
       toast({
@@ -228,6 +269,13 @@ export default function AcademicYear() {
   };
 
   const createYear = async (form: YearFormData) => {
+    if (isFree && years.length >= yearLimit) {
+      openUpgradeDialog(
+        "Year limit reached",
+        "Free tier allows 1 year. Upgrade to add more.",
+      );
+      return;
+    }
     setLoading(true);
     try {
       const created = await http<Year>("/years", {
@@ -235,6 +283,7 @@ export default function AcademicYear() {
         body: JSON.stringify(form),
       });
       setYears((prev) => [...prev, { ...created, semesters: [] }]);
+      void refreshProfile();
       toast({ title: "Year added", description: created.name });
     } catch (err) {
       toast({
@@ -248,6 +297,13 @@ export default function AcademicYear() {
   };
 
   const updateYear = async (yearId: string, form: YearFormData) => {
+    if (isFree && lockedYearIds.has(yearId)) {
+      openUpgradeDialog(
+        "Year locked on Free",
+        "Upgrade to edit additional years.",
+      );
+      return;
+    }
     setLoading(true);
     try {
       const updated = await http<Year>(`/years/${yearId}`, {
@@ -272,6 +328,13 @@ export default function AcademicYear() {
   };
 
   const deleteYear = async (year: Year) => {
+    if (isFree) {
+      openUpgradeDialog(
+        "Delete locked on Free",
+        "Upgrade to delete years.",
+      );
+      return;
+    }
     setLoading(true);
     try {
       await http(`/years/${year.id}`, { method: "DELETE" });
@@ -283,6 +346,7 @@ export default function AcademicYear() {
         });
         return next;
       });
+      void refreshProfile();
       toast({ title: "Year deleted", description: year.name });
       await loadTargetGpaSession();
     } catch (err) {
@@ -298,6 +362,13 @@ export default function AcademicYear() {
   };
 
   const moveSemesterToYear = async (semesterId: string, targetYearId: string) => {
+    if (isFree) {
+      openUpgradeDialog(
+        "Upgrade to move semesters",
+        "Free tier limits semesters to their original year.",
+      );
+      return;
+    }
     const sourceYear = years.find((year) => year.semesters.some((semester) => semester.id === semesterId));
     if (!sourceYear || sourceYear.id === targetYearId) return;
     setLoading(true);
@@ -609,10 +680,63 @@ export default function AcademicYear() {
     () => years.reduce((sum, year) => sum + year.semesters.length, 0),
     [years],
   );
-  const totalCourses = allCourses.length;
+  const totalCourses = allCourses.filter((course) => !course.isDemo).length;
   const totalCredits = allCourses.reduce((sum, course) => sum + (Number(course.credits) || 0), 0);
   const activeYearTargets = yearTargetSessions.length;
   const activeSemesterTargets = semesterTargetSessions.length;
+  const freeLimits = { years: 1, semesters: 1, courses: 3 };
+  const limits = profile?.limits ?? freeLimits;
+  const yearLimit = limits.years ?? freeLimits.years;
+  const semesterLimit = limits.semesters ?? freeLimits.semesters;
+  const courseLimit = limits.courses ?? freeLimits.courses;
+
+  const sortedYearsByStart = useMemo(
+    () => [...years].sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()),
+    [years],
+  );
+  const allowedYearId = isFree ? sortedYearsByStart[0]?.id ?? null : null;
+  const allowedSemesterId = useMemo(() => {
+    if (!isFree || !allowedYearId) return null;
+    const year = years.find((item) => item.id === allowedYearId);
+    if (!year) return null;
+    const sorted = [...year.semesters].sort(
+      (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
+    );
+    return sorted[0]?.id ?? null;
+  }, [allowedYearId, isFree, years]);
+  const allowedCourseIds = useMemo(() => {
+    if (!isFree || !allowedSemesterId) return new Set<string>();
+    const courses = [...(coursesBySemester[allowedSemesterId] ?? [])].filter((course) => !course.isDemo);
+    courses.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    return new Set(courses.slice(0, courseLimit).map((course) => course.id));
+  }, [allowedSemesterId, coursesBySemester, courseLimit, isFree]);
+  const lockedYearIds = useMemo(() => {
+    if (!isFree) return new Set<string>();
+    return new Set(sortedYearsByStart.filter((year) => year.id !== allowedYearId).map((year) => year.id));
+  }, [allowedYearId, isFree, sortedYearsByStart]);
+  const lockedSemesterIds = useMemo(() => {
+    if (!isFree) return new Set<string>();
+    const ids: string[] = [];
+    years.forEach((year) => {
+      year.semesters.forEach((semester) => {
+        if (semester.id !== allowedSemesterId) ids.push(semester.id);
+      });
+    });
+    return new Set(ids);
+  }, [allowedSemesterId, isFree, years]);
+  const lockedCourseIds = useMemo(() => {
+    if (!isFree) return new Set<string>();
+    const ids: string[] = [];
+    Object.values(coursesBySemester).forEach((courseList) => {
+      courseList.forEach((course) => {
+        if (!course.isDemo && !allowedCourseIds.has(course.id)) ids.push(course.id);
+      });
+    });
+    return new Set(ids);
+  }, [allowedCourseIds, coursesBySemester, isFree]);
+  const yearQuota = isFree ? `${years.length}/${yearLimit}` : "Unlimited";
+  const semesterQuota = isFree ? `${totalSemesters}/${semesterLimit}` : "Unlimited";
+  const courseQuota = isFree ? `${totalCourses}/${courseLimit}` : "Unlimited";
 
   const handleSemesterClick = (semesterId: string) => {
     localStorage.setItem(LAST_SEMESTER_KEY, semesterId);
@@ -622,6 +746,10 @@ export default function AcademicYear() {
   const signOut = () => {
     localStorage.clear();
     nav("/auth?mode=login");
+  };
+
+  const openUpgradeDialog = (title: string, description: string) => {
+    setUpgradeDialog({ title, description });
   };
 
 
@@ -656,7 +784,7 @@ export default function AcademicYear() {
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={() => nav("/profile")}>
                   <User className="h-4 w-4 mr-2" />
                   Profile
                 </DropdownMenuItem>
@@ -685,7 +813,7 @@ export default function AcademicYear() {
 
       {mobileMenuOpen && (
         <div className="md:hidden border-b border-slate-200 bg-white/95 px-4 py-3 space-y-2">
-          <Button variant="ghost" className="w-full justify-start gap-2">
+          <Button variant="ghost" className="w-full justify-start gap-2" onClick={() => nav("/profile")}>
             <User className="h-4 w-4" />
             Profile
           </Button>
@@ -701,6 +829,29 @@ export default function AcademicYear() {
       )}
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
+        {isFree ? (
+          <Card className="border-slate-200">
+            <CardContent className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-700">Plan status</p>
+                <p className="text-xs text-muted-foreground">
+                  {isFree ? "Free tier limits apply." : "Paid tier unlocked."}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-3 text-xs text-slate-600">
+                <span className="rounded-full border border-slate-200 px-3 py-1">
+                  Years: <span className="font-semibold text-slate-900">{yearQuota}</span>
+                </span>
+                <span className="rounded-full border border-slate-200 px-3 py-1">
+                  Semesters: <span className="font-semibold text-slate-900">{semesterQuota}</span>
+                </span>
+                <span className="rounded-full border border-slate-200 px-3 py-1">
+                  Courses: <span className="font-semibold text-slate-900">{courseQuota}</span>
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
         <div className="grid gap-4 md:grid-cols-3">
           <Card className="border-slate-200">
             <CardHeader className="pb-2">
@@ -790,10 +941,14 @@ export default function AcademicYear() {
         </div>
 
         <div className="space-y-4">
-          {yearCards.map((year) => (
+          {yearCards.map((year) => {
+            const isYearLocked = lockedYearIds.has(year.id);
+            const canEditYear = !isFree || !isYearLocked;
+            const canAddSemester = !isFree || (!isYearLocked && totalSemesters < semesterLimit);
+            return (
             <Card
               key={year.id}
-              className="border-slate-200 shadow-sm"
+              className={`border-slate-200 shadow-sm ${isYearLocked ? "opacity-70" : ""}`}
               onDragOver={(event) => event.preventDefault()}
               onDrop={() => {
                 if (draggedSemesterId) {
@@ -809,12 +964,25 @@ export default function AcademicYear() {
                     variant="link"
                     className="h-auto p-0 text-lg font-semibold underline underline-offset-4"
                     onClick={() => {
+                      if (!canEditYear) {
+                        openUpgradeDialog(
+                          "Year locked on Free",
+                          "Upgrade to edit additional years.",
+                        );
+                        return;
+                      }
                       setEditingYear(year);
                       setYearModalOpen(true);
                     }}
                   >
                     {year.name}
                   </Button>
+                  {isYearLocked ? (
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500">
+                      <Lock className="h-3 w-3" />
+                      Locked
+                    </span>
+                  ) : null}
                   {hasYearTarget(year.id) ? (
                     <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
                       Target GPA
@@ -830,6 +998,13 @@ export default function AcademicYear() {
                       <DropdownMenuItem
                         onSelect={(event) => {
                           event.preventDefault();
+                          if (!canEditYear) {
+                            openUpgradeDialog(
+                              "Year locked on Free",
+                              "Upgrade to edit additional years.",
+                            );
+                            return;
+                          }
                           setEditingYear(year);
                           setYearModalOpen(true);
                         }}
@@ -840,6 +1015,13 @@ export default function AcademicYear() {
                         className="text-destructive focus:text-destructive"
                         onSelect={(event) => {
                           event.preventDefault();
+                          if (isFree) {
+                            openUpgradeDialog(
+                              "Delete locked on Free",
+                              "Upgrade to delete years.",
+                            );
+                            return;
+                          }
                           setYearDeleteTarget(year);
                         }}
                       >
@@ -852,6 +1034,20 @@ export default function AcademicYear() {
                     size="sm"
                     className="justify-center md:w-auto bg-[#265D80] text-white hover:bg-[#1f4d6a]"
                     onClick={() => {
+                      if (!canAddSemester) {
+                        openUpgradeDialog(
+                          "Semester limit reached",
+                          "Free tier allows 1 semester. Upgrade to add more.",
+                        );
+                        return;
+                      }
+                      if (isFree && allowedYearId && allowedYearId !== year.id) {
+                        openUpgradeDialog(
+                          "Upgrade to add semesters",
+                          "Free tier limits semesters to your first year.",
+                        );
+                        return;
+                      }
                       setActiveYearId(year.id);
                       setActiveModal("semester");
                     }}
@@ -870,6 +1066,7 @@ export default function AcademicYear() {
                   <TooltipProvider>
                     <div className="grid items-start gap-4 sm:grid-cols-2 lg:grid-cols-3">
                       {year.semesters.map((semester) => {
+                        const isSemesterLocked = lockedSemesterIds.has(semester.id);
                         const courses = coursesBySemester[semester.id] ?? [];
                         const totalCredits = courses.reduce((sum, course) => sum + (Number(course.credits) || 0), 0);
                         const currentSemesterGpa = calculateGpa(courses, (course) => course.actualLetterGrade);
@@ -882,8 +1079,8 @@ export default function AcademicYear() {
                         return (
                           <Card
                             key={semester.id}
-                            className="border-slate-200 shadow-sm"
-                            draggable
+                            className={`border-slate-200 shadow-sm ${isSemesterLocked ? "opacity-70" : ""}`}
+                            draggable={!isFree}
                             onDragStart={(event) => {
                               event.dataTransfer.setData("text/plain", semester.id);
                               setDraggedSemesterId(semester.id);
@@ -900,6 +1097,12 @@ export default function AcademicYear() {
                                   >
                                     {semester.name}
                                   </Button>
+                                  {isSemesterLocked ? (
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                                      <Lock className="h-3 w-3" />
+                                      Locked
+                                    </span>
+                                  ) : null}
                                   {hasSemesterTarget(semester.id) ? (
                                     <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
                                       Target GPA
@@ -921,6 +1124,13 @@ export default function AcademicYear() {
                                         onSelect={(event) => {
                                           event.preventDefault();
                                           event.stopPropagation();
+                                          if (isFree && isSemesterLocked) {
+                                            openUpgradeDialog(
+                                              "Semester locked on Free",
+                                              "Upgrade to edit additional semesters.",
+                                            );
+                                            return;
+                                          }
                                           setEditingSemester(semester);
                                           setActiveModal("semester");
                                         }}
@@ -966,27 +1176,33 @@ export default function AcademicYear() {
                                     <span className="col-span-4">No courses yet.</span>
                                   </div>
                                 ) : (
-                                  courses.map((course) => (
-                                    <div
-                                      key={course.id}
-                                      className="grid min-w-0 grid-cols-[1fr,60px,80px,80px] gap-2 px-4 py-2 text-sm text-slate-700"
-                                    >
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Link
-                                            to={`/courses/${course.id}`}
-                                            className="truncate font-medium text-slate-700 underline underline-offset-2 hover:text-primary"
-                                          >
-                                            {course.code ?? course.name}
-                                          </Link>
-                                        </TooltipTrigger>
-                                        <TooltipContent>{course.name}</TooltipContent>
-                                      </Tooltip>
-                                      <span className="text-right">{Number(course.credits).toFixed(1)}</span>
-                                      <span className="text-right">{course.actualLetterGrade ?? "—"}</span>
-                                      <span className="text-right">{course.desiredLetterGrade}</span>
-                                    </div>
-                                  ))
+                                  courses.map((course) => {
+                                    const isCourseLocked = lockedCourseIds.has(course.id);
+                                    return (
+                                      <div
+                                        key={course.id}
+                                        className={`grid min-w-0 grid-cols-[1fr,60px,80px,80px] gap-2 px-4 py-2 text-sm ${
+                                          isCourseLocked ? "text-slate-400" : "text-slate-700"
+                                        }`}
+                                      >
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <Link
+                                              to={`/courses/${course.id}`}
+                                              className="flex items-center gap-2 truncate font-medium text-slate-700 underline underline-offset-2 hover:text-primary"
+                                            >
+                                              {isCourseLocked ? <Lock className="h-3 w-3 text-slate-400" /> : null}
+                                              {course.code ?? course.name}
+                                            </Link>
+                                          </TooltipTrigger>
+                                          <TooltipContent>{course.name}</TooltipContent>
+                                        </Tooltip>
+                                        <span className="text-right">{Number(course.credits).toFixed(1)}</span>
+                                        <span className="text-right">{course.actualLetterGrade ?? "—"}</span>
+                                        <span className="text-right">{course.desiredLetterGrade}</span>
+                                      </div>
+                                    );
+                                  })
                                 )}
                               </div>
                               <div className="grid min-w-0 grid-cols-[1fr,60px,80px,80px] gap-2 border-t border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700">
@@ -1004,7 +1220,8 @@ export default function AcademicYear() {
                 )}
               </CardContent>
             </Card>
-          ))}
+          );
+        })}
 
           <Card className="border-dashed border-slate-300 bg-white/70 shadow-sm">
             <CardContent className="p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -1016,6 +1233,13 @@ export default function AcademicYear() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
+                  if (isFree && years.length >= yearLimit) {
+                    openUpgradeDialog(
+                      "Year limit reached",
+                      "Free tier allows 1 year. Upgrade to add more.",
+                    );
+                    return;
+                  }
                   setEditingYear(null);
                   setYearModalOpen(true);
                 }}
@@ -1105,6 +1329,17 @@ export default function AcademicYear() {
         onSave={handleCareerTargetSave}
       />
 
+      <UpgradeDialog
+        open={!!upgradeDialog}
+        onOpenChange={(open) => !open && setUpgradeDialog(null)}
+        title={upgradeDialog?.title ?? "Upgrade required"}
+        description={upgradeDialog?.description ?? "Upgrade to unlock this action."}
+        onAction={() => {
+          setUpgradeDialog(null);
+          nav("/profile");
+        }}
+      />
+
       <SemesterModal
         open={activeModal === "semester"}
         onOpenChange={(open) => {
@@ -1139,6 +1374,8 @@ export default function AcademicYear() {
             ? () => deleteSemester(editingSemester.id)
             : undefined
         }
+        deleteDisabled={isFree}
+        deleteDisabledMessage={isFree ? "Delete is locked on the Free tier." : undefined}
         initialData={
           editingSemester
             ? {
@@ -1184,6 +1421,8 @@ export default function AcademicYear() {
         onDelete={
           editingYear ? () => deleteYear(editingYear) : undefined
         }
+        deleteDisabled={isFree}
+        deleteDisabledMessage={isFree ? "Delete is locked on the Free tier." : undefined}
       />
 
       <AlertDialog open={!!yearDeleteTarget} onOpenChange={(open) => !open && setYearDeleteTarget(null)}>

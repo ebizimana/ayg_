@@ -9,6 +9,7 @@ import Semester from "./pages/Semester";
 import AcademicYear from "./pages/AcademicYear";
 import CoursePage from "./pages/Course";
 import CourseCategories from "./pages/CourseCategories";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,6 +27,7 @@ const App = () => (
           <Route path="/academic-year" element={<AcademicYear />} />
           <Route path="/courses/:courseId" element={<CoursePage />} />
           <Route path="/courses/:courseId/categories" element={<CourseCategories />} />
+          <Route path="/profile" element={<Profile />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

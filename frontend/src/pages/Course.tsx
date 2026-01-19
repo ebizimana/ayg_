@@ -31,7 +31,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { CourseModal } from "@/components/modals";
+import { UpgradeDialog } from "@/components/UpgradeDialog";
 import { useToast } from "@/hooks/use-toast";
+import { getStoredTier, useUserProfile, type UserTier } from "@/hooks/use-user-profile";
 import { http } from "@/lib/http";
 import {
   AlertTriangle,
@@ -48,6 +50,7 @@ import {
   Settings,
   LogOut,
   Pencil,
+  Lock,
 } from "lucide-react";
 
 type Assignment = {
@@ -155,6 +158,7 @@ const toAssignment = (form: AssignmentForm): Assignment => ({
 export default function CoursePage() {
   const { courseId } = useParams<{ courseId: string }>();
   const nav = useNavigate();
+  const { profile } = useUserProfile();
   const [courseName, setCourseName] = useState("Calculus I");
   const [courseCode, setCourseCode] = useState("");
   const [courseCredits, setCourseCredits] = useState(3);
@@ -163,6 +167,7 @@ export default function CoursePage() {
   const [semesterName, setSemesterName] = useState("Semester");
   const [courseSemesterId, setCourseSemesterId] = useState<string | null>(null);
   const [semesterList, setSemesterList] = useState<SemesterResponse[]>([]);
+  const [semesterCourses, setSemesterCourses] = useState<{ id: string; sortOrder?: number; isDemo?: boolean }[]>([]);
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedGrade, setSelectedGrade] = useState<string>("A");
@@ -183,6 +188,14 @@ export default function CoursePage() {
   const { toast } = useToast();
   const [categoryLocked, setCategoryLocked] = useState(false);
   const [maxLocked, setMaxLocked] = useState(false);
+  const [upgradeDialog, setUpgradeDialog] = useState<{ title: string; description: string } | null>(null);
+
+  const tier: UserTier | null = profile?.tier ?? getStoredTier();
+  const isFree = tier === "FREE";
+
+  const openUpgradeDialog = (title: string, description: string) => {
+    setUpgradeDialog({ title, description });
+  };
 
   const clearExpectedPoints = useCallback(() => {
     setAssignments((prev) =>
@@ -278,6 +291,16 @@ export default function CoursePage() {
         const fallbackMatch = fallback ? semesters.find((s) => s.id === fallback) : undefined;
         setSemesterName(match?.name ?? fallbackMatch?.name ?? semesters[0].name);
       }
+      if (course?.semesterId) {
+        try {
+          const list = await http<{ id: string; sortOrder?: number; isDemo?: boolean }[]>(
+            `/semesters/${course.semesterId}/courses`,
+          );
+          setSemesterCourses(list ?? []);
+        } catch {
+          setSemesterCourses([]);
+        }
+      }
 
       const mappedCategories: Category[] =
         cats?.map((c: any) => ({
@@ -350,6 +373,46 @@ export default function CoursePage() {
     return getYearForSemester(semesterList, courseSemesterId);
   }, [courseSemesterId, semesterList]);
   const courseYearId = courseYear?.id ?? null;
+  const freeLimits = { years: 1, semesters: 1, courses: 3 };
+  const courseLimit = profile?.limits?.courses ?? freeLimits.courses;
+  const yearsFromSemesters = useMemo(() => {
+    const map = new Map<string, SemesterResponse["year"]>();
+    semesterList.forEach((semester) => {
+      if (semester.year) {
+        map.set(semester.year.id, semester.year);
+      }
+    });
+    return Array.from(map.values()).filter((year): year is NonNullable<SemesterResponse["year"]> => !!year);
+  }, [semesterList]);
+  const sortedYearsByStart = useMemo(() => {
+    return [...yearsFromSemesters].sort(
+      (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
+    );
+  }, [yearsFromSemesters]);
+  const allowedYearId = isFree ? sortedYearsByStart[0]?.id ?? null : null;
+  const allowedSemesterId = useMemo(() => {
+    if (!isFree) return null;
+    const candidates = semesterList.filter((semester) =>
+      allowedYearId ? semester.yearId === allowedYearId : true,
+    );
+    const sorted = [...candidates].sort(
+      (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
+    );
+    return sorted[0]?.id ?? null;
+  }, [allowedYearId, isFree, semesterList]);
+  const allowedCourseIds = useMemo(() => {
+    if (!isFree || !allowedSemesterId) return new Set<string>();
+    const sorted = [...semesterCourses]
+      .filter((course) => !course.isDemo)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    return new Set(sorted.slice(0, courseLimit).map((course) => course.id));
+  }, [allowedSemesterId, courseLimit, isFree, semesterCourses]);
+  const isCourseLocked = useMemo(() => {
+    if (!isFree || !courseId) return false;
+    if (!allowedSemesterId || courseSemesterId !== allowedSemesterId) return true;
+    if (allowedCourseIds.size === 0) return false;
+    return !allowedCourseIds.has(courseId);
+  }, [allowedCourseIds, allowedSemesterId, courseId, courseSemesterId, isFree]);
 
   const careerTargetSession =
     targetGpaSessions.find((session) => session.scope === "CAREER") ?? null;
@@ -446,6 +509,13 @@ export default function CoursePage() {
   }, [assignments, sortBy, sortDir, categories]);
 
   const openEditor = (assignment: Assignment) => {
+    if (isFree && isCourseLocked) {
+      openUpgradeDialog(
+        "Course locked on Free",
+        "Upgrade to edit assignments on locked courses.",
+      );
+      return;
+    }
     setMode("edit");
     setForm(toForm(assignment));
     setCategoryLocked(true);
@@ -458,6 +528,13 @@ export default function CoursePage() {
   };
 
   const openCreate = () => {
+    if (isFree && isCourseLocked) {
+      openUpgradeDialog(
+        "Course locked on Free",
+        "Upgrade to add assignments on locked courses.",
+      );
+      return;
+    }
     if (!categories.length && courseGradingMethod !== "POINTS") {
       toast({ title: "Add a category first", variant: "destructive" });
       return;
@@ -483,6 +560,13 @@ export default function CoursePage() {
   };
 
   const saveAssignment = async () => {
+    if (isFree && isCourseLocked) {
+      openUpgradeDialog(
+        "Course locked on Free",
+        "Upgrade to edit assignments on locked courses.",
+      );
+      return;
+    }
     if (!form) return;
     if (!form.categoryId) {
       toast({ title: "Pick a category first", variant: "destructive" });
@@ -565,6 +649,13 @@ export default function CoursePage() {
   };
 
   const deleteAssignment = async (id: string) => {
+    if (isFree && isCourseLocked) {
+      openUpgradeDialog(
+        "Course locked on Free",
+        "Upgrade to delete assignments on locked courses.",
+      );
+      return;
+    }
     try {
       await http(`/assignments/${id}`, { method: "DELETE" });
       setAssignments((prev) => prev.filter((a) => a.id !== id));
@@ -593,6 +684,13 @@ export default function CoursePage() {
 
   const runSimulation = async () => {
     if (!courseId) return;
+    if (isFree && isCourseLocked) {
+      openUpgradeDialog(
+        "Course locked on Free",
+        "Upgrade to run simulations on locked courses.",
+      );
+      return;
+    }
     try {
       setHasRun(true);
       const plan = await http<GradePlan>(`/courses/${courseId}/grade-plan?desiredGrade=${selectedGrade}`);
@@ -627,6 +725,13 @@ export default function CoursePage() {
     gradingMethod: "WEIGHTED" | "POINTS";
     isCompleted?: boolean;
   }) => {
+    if (isFree && isCourseLocked) {
+      openUpgradeDialog(
+        "Course locked on Free",
+        "Upgrade to edit additional courses.",
+      );
+      return;
+    }
     if (courseId) {
       const payload: {
         name: string;
@@ -691,6 +796,13 @@ export default function CoursePage() {
   const handleDeleteCourse = () => {
     setConfirmDeleteOpen(false);
     if (!courseId) return;
+    if (isFree) {
+      openUpgradeDialog(
+        "Delete locked on Free",
+        "Upgrade to delete courses.",
+      );
+      return;
+    }
     http(`/courses/${courseId}`, { method: "DELETE" })
       .then(() => {
         toast({ title: "Course deleted", description: `${courseName} removed`, variant: "destructive" });
@@ -890,7 +1002,7 @@ export default function CoursePage() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={() => nav("/profile")}>
                   <User className="h-4 w-4 mr-2" />
                   Profile
                 </DropdownMenuItem>
@@ -909,6 +1021,14 @@ export default function CoursePage() {
       </header>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-6">
+        {isCourseLocked ? (
+          <Card className="border-amber-200 bg-amber-50">
+            <CardContent className="flex items-center gap-3 py-4 text-sm text-amber-900">
+              <Lock className="h-4 w-4" />
+              This course is locked on the Free tier. Upgrade to edit or delete it.
+            </CardContent>
+          </Card>
+        ) : null}
         <div className="sticky top-16 z-30">
           <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/90 shadow-md backdrop-blur">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-5 py-4">
@@ -922,6 +1042,12 @@ export default function CoursePage() {
                   <p className="text-xs uppercase tracking-[0.15em] text-primary font-semibold">Course</p>
                   <div className="flex items-center gap-2">
                     <h1 className="text-2xl font-bold text-foreground">{courseName}</h1>
+                    {isCourseLocked ? (
+                      <Badge variant="outline" className="flex items-center gap-1 text-xs">
+                        <Lock className="h-3 w-3" />
+                        Locked
+                      </Badge>
+                    ) : null}
                     <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon" className="rounded-full">
@@ -932,6 +1058,13 @@ export default function CoursePage() {
                         <DropdownMenuItem
                           onClick={() => {
                             setMenuOpen(false);
+                            if (isFree && isCourseLocked) {
+                              openUpgradeDialog(
+                                "Course locked on Free",
+                                "Upgrade to edit additional courses.",
+                              );
+                              return;
+                            }
                             setEditCourseOpen(true);
                           }}
                         >
@@ -940,6 +1073,13 @@ export default function CoursePage() {
                         <DropdownMenuItem
                           onClick={() => {
                             setMenuOpen(false);
+                            if (isFree && isCourseLocked) {
+                              openUpgradeDialog(
+                                "Course locked on Free",
+                                "Upgrade to manage categories on locked courses.",
+                              );
+                              return;
+                            }
                             if (courseId) nav(`/courses/${courseId}/categories`);
                             else nav("/dashboard");
                           }}
@@ -950,6 +1090,13 @@ export default function CoursePage() {
                           className="text-destructive"
                           onClick={() => {
                             setMenuOpen(false);
+                            if (isFree) {
+                              openUpgradeDialog(
+                                "Delete locked on Free",
+                                "Upgrade to delete courses.",
+                              );
+                              return;
+                            }
                             setConfirmDeleteOpen(true);
                           }}
                         >
@@ -969,7 +1116,7 @@ export default function CoursePage() {
                   <Select
                     value={selectedGrade}
                     onValueChange={(value) => setSelectedGrade(value)}
-                    disabled={!!targetGpaLockedForCourse}
+                    disabled={!!targetGpaLockedForCourse || (isFree && isCourseLocked)}
                   >
                     <SelectTrigger className="w-28">
                       <SelectValue placeholder="Grade" />
@@ -986,6 +1133,10 @@ export default function CoursePage() {
                     <span className="text-[10px] text-muted-foreground">
                       Target grade is controlled by your GPA setting.
                     </span>
+                  ) : isFree && isCourseLocked ? (
+                    <span className="text-[10px] text-muted-foreground">
+                      Locked on the Free tier.
+                    </span>
                   ) : null}
                 </div>
                 <Button className="gap-2" onClick={runSimulation}>
@@ -998,7 +1149,16 @@ export default function CoursePage() {
               <div className="flex flex-wrap items-center justify-center gap-2">
                 <Button
                   className="gap-2 bg-[#faf1e4] text-[#343434] hover:bg-[#f3e5d3]"
-                  onClick={() => nav(`/courses/${courseId}/categories`)}
+                  onClick={() => {
+                    if (isFree && isCourseLocked) {
+                      openUpgradeDialog(
+                        "Course locked on Free",
+                        "Upgrade to manage categories on locked courses.",
+                      );
+                      return;
+                    }
+                    nav(`/courses/${courseId}/categories`);
+                  }}
                 >
                   <Pencil className="h-4 w-4" />
                   Manage categories
@@ -1382,6 +1542,17 @@ export default function CoursePage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <UpgradeDialog
+        open={!!upgradeDialog}
+        onOpenChange={(open) => !open && setUpgradeDialog(null)}
+        title={upgradeDialog?.title ?? "Upgrade required"}
+        description={upgradeDialog?.description ?? "Upgrade to unlock this action."}
+        onAction={() => {
+          setUpgradeDialog(null);
+          nav("/profile");
+        }}
+      />
 
       <CourseModal
         open={editCourseOpen}

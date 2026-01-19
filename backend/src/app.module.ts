@@ -10,6 +10,7 @@ import { AssignmentsModule } from './modules/assignments/assignments.module';
 import { GradesModule } from './modules/grades/grades.module';
 import { TargetGpaModule } from './modules/target-gpa/target-gpa.module';
 import { YearsModule } from './modules/years/years.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { YearsModule } from './modules/years/years.module';
     AssignmentsModule,
     GradesModule,
     TargetGpaModule,
+    WebhooksModule,
   ],
   controllers: [HealthController],
 })

@@ -5,10 +5,47 @@ import { UpdateCourseDto } from './dto/update-course.dto';
 import { computeCoursePlan } from './grade-plan.util';
 import { GradePlanQueryDto } from './dto/grade-plan.dto';
 import { TargetGpaService } from '../target-gpa/target-gpa.service';
+import { UsersService } from '../users/users.service';
+import { FREE_LIMITS, isFreeTier } from '../../common/tier/tier.constants';
 
 @Injectable()
 export class CoursesService {
-  constructor(private prisma: PrismaService, private targetGpaService: TargetGpaService) { }
+  constructor(
+    private prisma: PrismaService,
+    private targetGpaService: TargetGpaService,
+    private usersService: UsersService,
+  ) { }
+
+  private async getFreeAllowedYearId(userId: string) {
+    const year = await this.prisma.year.findFirst({
+      where: { userId },
+      orderBy: { startDate: 'asc' },
+      select: { id: true },
+    });
+    return year?.id ?? null;
+  }
+
+  private async getFreeAllowedSemesterId(userId: string) {
+    const allowedYearId = await this.getFreeAllowedYearId(userId);
+    if (!allowedYearId) return null;
+    const semester = await this.prisma.semester.findFirst({
+      where: { yearId: allowedYearId },
+      orderBy: { startDate: 'asc' },
+      select: { id: true },
+    });
+    return semester?.id ?? null;
+  }
+
+  private async getFreeAllowedCourseIds(userId: string) {
+    const allowedSemesterId = await this.getFreeAllowedSemesterId(userId);
+    if (!allowedSemesterId) return new Set<string>();
+    const courses = await this.prisma.course.findMany({
+      where: { semesterId: allowedSemesterId, isDemo: false },
+      orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true },
+    });
+    return new Set(courses.slice(0, FREE_LIMITS.courses).map((course) => course.id));
+  }
 
   private async assertSemesterOwnership(userId: string, semesterId: string) {
     const semester = await this.prisma.semester.findFirst({
@@ -33,6 +70,17 @@ export class CoursesService {
 
   async create(userId: string, semesterId: string, dto: CreateCourseDto) {
     await this.assertSemesterOwnership(userId, semesterId);
+    const tier = await this.usersService.getTier(userId);
+    if (isFreeTier(tier)) {
+      const count = await this.prisma.course.count({ where: { semester: { year: { userId } }, isDemo: false } });
+      if (count >= FREE_LIMITS.courses) {
+        throw new ForbiddenException('Free tier allows 3 courses.');
+      }
+      const allowedSemesterId = await this.getFreeAllowedSemesterId(userId);
+      if (allowedSemesterId && allowedSemesterId !== semesterId) {
+        throw new ForbiddenException('Upgrade to add courses to additional semesters.');
+      }
+    }
     const hasTarget = await this.targetGpaService.isTargetActiveForSemester(userId, semesterId);
 
     const course = await this.prisma.$transaction(async (tx) => {
@@ -141,6 +189,16 @@ export class CoursesService {
 
   async update(userId: string, courseId: string, dto: UpdateCourseDto) {
     const course = await this.assertCourseOwnership(userId, courseId);
+    const tier = await this.usersService.getTier(userId);
+    if (isFreeTier(tier)) {
+      const allowedCourseIds = await this.getFreeAllowedCourseIds(userId);
+      if (allowedCourseIds.size && !allowedCourseIds.has(courseId)) {
+        throw new ForbiddenException('Upgrade to edit additional courses.');
+      }
+      if (dto.gradingScaleId !== undefined || dto.gradeFinalizedAt !== undefined) {
+        throw new ForbiddenException('Upgrade to edit advanced course settings.');
+      }
+    }
 
     if (dto.gradingMethod !== undefined) {
       const existing = await this.prisma.course.findUnique({
@@ -212,6 +270,10 @@ export class CoursesService {
 
   async remove(userId: string, courseId: string) {
     const course = await this.assertCourseOwnership(userId, courseId);
+    const tier = await this.usersService.getTier(userId);
+    if (isFreeTier(tier)) {
+      throw new ForbiddenException('Upgrade to delete courses.');
+    }
     const removed = await this.prisma.course.delete({ where: { id: courseId } });
     await this.targetGpaService.recomputeForCourseChange(userId, course.semesterId);
     return removed;
@@ -221,6 +283,13 @@ export class CoursesService {
     if (!orderedIds.length) return { count: 0 };
 
     await this.assertSemesterOwnership(userId, semesterId);
+    const tier = await this.usersService.getTier(userId);
+    if (isFreeTier(tier)) {
+      const allowedSemesterId = await this.getFreeAllowedSemesterId(userId);
+      if (allowedSemesterId && allowedSemesterId !== semesterId) {
+        throw new ForbiddenException('Upgrade to reorder courses in additional semesters.');
+      }
+    }
 
     const courses = await this.prisma.course.findMany({
       where: { id: { in: orderedIds }, semesterId },

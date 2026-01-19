@@ -5,9 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { CategoryModal, type CategoryFormData } from "@/components/modals";
+import { UpgradeDialog } from "@/components/UpgradeDialog";
 import { useToast } from "@/hooks/use-toast";
+import { getStoredTier, useUserProfile, type UserTier } from "@/hooks/use-user-profile";
 import { http } from "@/lib/http";
-import { Bell, ChevronDown, GraduationCap, GripVertical, LogOut, Plus, Settings, User } from "lucide-react";
+import { Bell, ChevronDown, GraduationCap, GripVertical, LogOut, Plus, Settings, User, Lock } from "lucide-react";
 
 type Category = {
   id: string;
@@ -17,7 +19,14 @@ type Category = {
   assignmentsCount?: number;
   sortOrder: number;
 };
-type CourseResponse = { name?: string; gradingMethod?: "WEIGHTED" | "POINTS" };
+type CourseResponse = { name?: string; gradingMethod?: "WEIGHTED" | "POINTS"; semesterId?: string };
+type SemesterResponse = {
+  id: string;
+  name: string;
+  startDate: string;
+  yearId: string;
+  year?: { id: string; name: string; startDate: string; endDate: string };
+};
 type GradePlan = {
   categories: { id: string; weight: number; actualPercent: number | null }[];
 };
@@ -35,9 +44,11 @@ export default function CourseCategories() {
   const { courseId } = useParams<{ courseId: string }>();
   const nav = useNavigate();
   const { toast } = useToast();
+  const { profile } = useUserProfile();
 
   const [courseName, setCourseName] = useState("Course");
   const [courseGradingMethod, setCourseGradingMethod] = useState<"WEIGHTED" | "POINTS">("WEIGHTED");
+  const [courseSemesterId, setCourseSemesterId] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -48,18 +59,41 @@ export default function CourseCategories() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [metrics, setMetrics] = useState<CategoryMetrics[]>([]);
   const [totalPoints, setTotalPoints] = useState(0);
+  const [semesterList, setSemesterList] = useState<SemesterResponse[]>([]);
+  const [semesterCourses, setSemesterCourses] = useState<{ id: string; sortOrder?: number; isDemo?: boolean }[]>([]);
+  const [upgradeDialog, setUpgradeDialog] = useState<{ title: string; description: string } | null>(null);
+
+  const tier: UserTier | null = profile?.tier ?? getStoredTier();
+  const isFree = tier === "FREE";
+
+  const openUpgradeDialog = (title: string, description: string) => {
+    setUpgradeDialog({ title, description });
+  };
 
   const loadData = useCallback(async () => {
     if (!courseId) return;
     setLoading(true);
     try {
-      const [course, cats, plan] = await Promise.all([
+      const [course, cats, plan, semesters] = await Promise.all([
         http<CourseResponse>(`/courses/${courseId}`),
         http<any[]>(`/courses/${courseId}/categories`),
         http<GradePlan>(`/courses/${courseId}/grade-plan`),
+        http<SemesterResponse[]>("/semesters"),
       ]);
       if (course?.name) setCourseName(course.name);
       if (course?.gradingMethod) setCourseGradingMethod(course.gradingMethod);
+      if (course?.semesterId) setCourseSemesterId(course.semesterId);
+      setSemesterList(semesters ?? []);
+      if (course?.semesterId) {
+        try {
+          const list = await http<{ id: string; sortOrder?: number; isDemo?: boolean }[]>(
+            `/semesters/${course.semesterId}/courses`,
+          );
+          setSemesterCourses(list ?? []);
+        } catch {
+          setSemesterCourses([]);
+        }
+      }
       const mapped: Category[] =
         cats?.map((c: any) => ({
           id: c.id,
@@ -148,6 +182,46 @@ export default function CourseCategories() {
   );
   const metricsMap = useMemo(() => new Map(metrics.map((m) => [m.id, m])), [metrics]);
   const isPointsBased = courseGradingMethod === "POINTS";
+  const freeLimits = { years: 1, semesters: 1, courses: 3 };
+  const courseLimit = profile?.limits?.courses ?? freeLimits.courses;
+  const yearsFromSemesters = useMemo(() => {
+    const map = new Map<string, SemesterResponse["year"]>();
+    semesterList.forEach((semester) => {
+      if (semester.year) {
+        map.set(semester.year.id, semester.year);
+      }
+    });
+    return Array.from(map.values()).filter((year): year is NonNullable<SemesterResponse["year"]> => !!year);
+  }, [semesterList]);
+  const sortedYearsByStart = useMemo(() => {
+    return [...yearsFromSemesters].sort(
+      (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
+    );
+  }, [yearsFromSemesters]);
+  const allowedYearId = isFree ? sortedYearsByStart[0]?.id ?? null : null;
+  const allowedSemesterId = useMemo(() => {
+    if (!isFree) return null;
+    const candidates = semesterList.filter((semester) =>
+      allowedYearId ? semester.yearId === allowedYearId : true,
+    );
+    const sorted = [...candidates].sort(
+      (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
+    );
+    return sorted[0]?.id ?? null;
+  }, [allowedYearId, isFree, semesterList]);
+  const allowedCourseIds = useMemo(() => {
+    if (!isFree || !allowedSemesterId) return new Set<string>();
+    const sorted = [...semesterCourses]
+      .filter((course) => !course.isDemo)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    return new Set(sorted.slice(0, courseLimit).map((course) => course.id));
+  }, [allowedSemesterId, courseLimit, isFree, semesterCourses]);
+  const isCourseLocked = useMemo(() => {
+    if (!isFree || !courseId) return false;
+    if (!allowedSemesterId || courseSemesterId !== allowedSemesterId) return true;
+    if (allowedCourseIds.size === 0) return false;
+    return !allowedCourseIds.has(courseId);
+  }, [allowedCourseIds, allowedSemesterId, courseId, courseSemesterId, isFree]);
 
   const toggleSort = (col: "name" | "weight" | "count") => {
     if (sortBy === col) setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
@@ -157,6 +231,13 @@ export default function CourseCategories() {
     }
   };
   const persistCategoryOrder = async (ordered: Category[]) => {
+    if (isFree && isCourseLocked) {
+      openUpgradeDialog(
+        "Course locked on Free",
+        "Upgrade to reorder categories on locked courses.",
+      );
+      return;
+    }
     try {
       await http(`/categories/reorder`, {
         method: "PATCH",
@@ -173,6 +254,14 @@ export default function CourseCategories() {
 
   const handleDrop = (targetId: string) => {
     if (!draggingId || draggingId === targetId) {
+      setDraggingId(null);
+      return;
+    }
+    if (isFree && isCourseLocked) {
+      openUpgradeDialog(
+        "Course locked on Free",
+        "Upgrade to reorder categories on locked courses.",
+      );
       setDraggingId(null);
       return;
     }
@@ -193,17 +282,38 @@ export default function CourseCategories() {
   };
 
   const openAdd = () => {
+    if (isFree && isCourseLocked) {
+      openUpgradeDialog(
+        "Course locked on Free",
+        "Upgrade to add categories on locked courses.",
+      );
+      return;
+    }
     setEditingCategory(null);
     setModalOpen(true);
   };
 
   const openEdit = (cat: Category) => {
+    if (isFree && isCourseLocked) {
+      openUpgradeDialog(
+        "Course locked on Free",
+        "Upgrade to edit categories on locked courses.",
+      );
+      return;
+    }
     setEditingCategory(cat);
     setModalOpen(true);
   };
 
   const handleSave = async (data: CategoryFormData) => {
     if (!courseId) return;
+    if (isFree && isCourseLocked) {
+      openUpgradeDialog(
+        "Course locked on Free",
+        "Upgrade to edit categories on locked courses.",
+      );
+      return;
+    }
     try {
       if (editingCategory) {
         await http(`/categories/${editingCategory.id}`, {
@@ -240,6 +350,13 @@ export default function CourseCategories() {
 
   const handleDelete = async () => {
     if (!confirmDeleteCategory) return;
+    if (isFree && isCourseLocked) {
+      openUpgradeDialog(
+        "Course locked on Free",
+        "Upgrade to delete categories on locked courses.",
+      );
+      return;
+    }
     try {
       await http(`/categories/${confirmDeleteCategory.id}`, { method: "DELETE" });
       toast({ title: "Category deleted", description: confirmDeleteCategory.name });
@@ -293,7 +410,7 @@ export default function CourseCategories() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={() => nav("/profile")}>
                   <User className="h-4 w-4 mr-2" />
                   Profile
                 </DropdownMenuItem>
@@ -312,11 +429,25 @@ export default function CourseCategories() {
       </header>
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-6">
+        {isCourseLocked ? (
+          <Card className="border-amber-200 bg-amber-50">
+            <CardContent className="flex items-center gap-3 py-4 text-sm text-amber-900">
+              <Lock className="h-4 w-4" />
+              This course is locked on the Free tier. Upgrade to edit categories.
+            </CardContent>
+          </Card>
+        ) : null}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-2xl border border-slate-200 bg-white/90 shadow-md backdrop-blur px-5 py-4">
           <div>
             <p className="text-xs uppercase tracking-[0.15em] text-primary font-semibold">Course</p>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold text-foreground">{courseName}</h1>
+              {isCourseLocked ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                  <Lock className="h-3 w-3" />
+                  Locked
+                </span>
+              ) : null}
             </div>
             <p className="text-sm text-muted-foreground">Edit category weights and drop rules for this course.</p>
           </div>
@@ -327,7 +458,10 @@ export default function CourseCategories() {
         <Card className="border-slate-200 shadow-lg">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-xl">Manage categories</CardTitle>
-            <Button className="gap-2 bg-success text-white hover:bg-success/90" onClick={openAdd}>
+            <Button
+              className="gap-2 bg-success text-white hover:bg-success/90"
+              onClick={openAdd}
+            >
               <Plus className="h-4 w-4" />
               Add category
             </Button>
@@ -356,8 +490,11 @@ export default function CourseCategories() {
                 <div
                   key={cat.id}
                   className={`grid grid-cols-[48px_1fr_100px_120px_140px_120px_120px] items-center bg-white hover:bg-slate-50 transition-colors ${draggingId === cat.id ? "opacity-75" : ""}`}
-                  draggable
-                  onDragStart={() => setDraggingId(cat.id)}
+                  draggable={!isFree || !isCourseLocked}
+                  onDragStart={() => {
+                    if (isFree && isCourseLocked) return;
+                    setDraggingId(cat.id);
+                  }}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => handleDrop(cat.id)}
                   onClick={() => openEdit(cat)}
@@ -433,6 +570,17 @@ export default function CourseCategories() {
           </CardContent>
         </Card>
       </div>
+
+      <UpgradeDialog
+        open={!!upgradeDialog}
+        onOpenChange={(open) => !open && setUpgradeDialog(null)}
+        title={upgradeDialog?.title ?? "Upgrade required"}
+        description={upgradeDialog?.description ?? "Upgrade to unlock this action."}
+        onAction={() => {
+          setUpgradeDialog(null);
+          nav("/profile");
+        }}
+      />
 
       <CategoryModal
         open={modalOpen}

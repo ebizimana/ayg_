@@ -27,6 +27,8 @@ interface YearModalProps {
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: YearFormData) => void;
   onDelete?: () => void | Promise<void>;
+  deleteDisabled?: boolean;
+  deleteDisabledMessage?: string;
   targetGpa?: {
     enabled: boolean;
     value?: number | null;
@@ -48,6 +50,8 @@ export function YearModal({
   onOpenChange,
   onSubmit,
   onDelete,
+  deleteDisabled,
+  deleteDisabledMessage,
   targetGpa,
   initialData,
 }: YearModalProps) {
@@ -172,13 +176,19 @@ export function YearModal({
           </div>
           <DialogFooter className="flex w-full flex-row items-center justify-between gap-2 sm:justify-between sm:space-x-0">
             {initialData && onDelete ? (
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={() => setConfirmDeleteOpen(true)}
-              >
-                Delete Year
-              </Button>
+              <div className="flex flex-col items-start gap-1">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => setConfirmDeleteOpen(true)}
+                  disabled={deleteDisabled}
+                >
+                  Delete Year
+                </Button>
+                {deleteDisabled && deleteDisabledMessage ? (
+                  <span className="text-xs text-muted-foreground">{deleteDisabledMessage}</span>
+                ) : null}
+              </div>
             ) : (
               <span />
             )}

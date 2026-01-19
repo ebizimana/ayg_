@@ -1,6 +1,7 @@
 
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
+import * as express from 'express';
 import { AppModule } from './app.module';
 import { HttpAdapterHost } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
@@ -9,6 +10,8 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  app.use('/webhooks/stripe', express.raw({ type: 'application/json' }));
 
   const port = Number(process.env.PORT) || 3000;
   const corsOrigin = process.env.CORS_ORIGIN;

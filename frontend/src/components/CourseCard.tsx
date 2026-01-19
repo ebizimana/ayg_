@@ -3,7 +3,7 @@ import { ProgressRing } from "@/components/ProgressRing";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { MoreHorizontal, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { MoreHorizontal, TrendingUp, TrendingDown, Minus, Lock } from "lucide-react";
 
 interface CourseCardProps {
   name: string;
@@ -12,6 +12,7 @@ interface CourseCardProps {
   gradingMethod?: "WEIGHTED" | "POINTS";
   isDemo?: boolean;
   isCompleted?: boolean;
+  isLocked?: boolean;
   currentGrade: number | null;
   letterGrade: string;
   targetLetter: string;
@@ -61,6 +62,7 @@ export function CourseCard({
   gradingMethod,
   isDemo,
   isCompleted,
+  isLocked,
   currentGrade,
   letterGrade,
   targetLetter,
@@ -89,7 +91,9 @@ export function CourseCard({
 
   return (
     <Card 
-      className={`group cursor-pointer border-border/50 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${isCompleted ? "bg-muted/30 opacity-80" : ""}`}
+      className={`group cursor-pointer border-border/50 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${
+        isCompleted ? "bg-muted/30 opacity-80" : ""
+      } ${isLocked ? "opacity-70" : ""}`}
       onClick={onClick}
     >
       <CardHeader className="pb-2 flex flex-row items-start justify-between">
@@ -105,6 +109,12 @@ export function CourseCard({
             {isDemo && (
               <Badge variant="secondary" className="ml-2">
                 Demo
+              </Badge>
+            )}
+            {isLocked && (
+              <Badge variant="outline" className="ml-2 flex items-center gap-1">
+                <Lock className="h-3 w-3" />
+                Locked
               </Badge>
             )}
             {isCompleted && (

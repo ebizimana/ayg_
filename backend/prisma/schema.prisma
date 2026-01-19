@@ -11,12 +11,18 @@ model User {
   id        String     @id @default(uuid())
   email     String     @unique
   password  String
+  tier      UserTier   @default(FREE)
 
   years     Year[]
   targetGpaSessions TargetGpaSession[]
 
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
+}
+
+enum UserTier {
+  FREE
+  PAID
 }
 
 model Year {

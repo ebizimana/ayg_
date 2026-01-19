@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProgressRing } from "@/components/ProgressRing";
 import { CourseCard } from "@/components/CourseCard";
 import { StatCard } from "@/components/StatCard";
+import { UpgradeDialog } from "@/components/UpgradeDialog";
 import {
   CourseModal,
   type CourseFormData,
@@ -31,6 +32,7 @@ import {
   Menu,
   X,
   Sparkles,
+  Lock,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -41,6 +43,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { getStoredTier, useUserProfile, type UserTier } from "@/hooks/use-user-profile";
 import { http } from "@/lib/http";
 
 type Semester = {
@@ -50,6 +53,7 @@ type Semester = {
   endDate: string;
   yearId: string;
   year?: { id: string; name: string; startDate: string; endDate: string };
+  createdAt?: string;
 };
 type Course = {
   id: string;
@@ -64,6 +68,7 @@ type Course = {
   sortOrder?: number;
   isDemo?: boolean;
   isCompleted?: boolean;
+  createdAt?: string;
 };
 type Category = { id: string; name: string; weightPercent?: number; dropLowest?: number };
 type Assignment = {
@@ -101,6 +106,7 @@ const LAST_SEMESTER_KEY = "ayg_last_semester_id";
 export default function Semester() {
   const { toast } = useToast();
   const nav = useNavigate();
+  const { profile, refresh: refreshProfile } = useUserProfile();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [semesters, setSemesters] = useState<Semester[]>([]);
@@ -116,8 +122,11 @@ export default function Semester() {
   const lastCourseDropRef = useRef<number>(0);
   const [targetGpaSessions, setTargetGpaSessions] = useState<TargetGpaSession[]>([]);
   const [semesterTargetModalOpen, setSemesterTargetModalOpen] = useState(false);
+  const [upgradeDialog, setUpgradeDialog] = useState<{ title: string; description: string } | null>(null);
 
   const token = useMemo(() => localStorage.getItem("ayg_token"), []);
+  const tier: UserTier | null = profile?.tier ?? getStoredTier();
+  const isFree = tier === "FREE";
   const activeCourse = useMemo(
     () => courses.find((course) => course.id === selectedCourseId),
     [courses, selectedCourseId],
@@ -131,6 +140,57 @@ export default function Semester() {
     list.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
     return list;
   }, [courses]);
+  const freeLimits = { years: 1, semesters: 1, courses: 3 };
+  const limits = profile?.limits ?? freeLimits;
+  const semesterLimit = limits.semesters ?? freeLimits.semesters;
+  const courseLimit = limits.courses ?? freeLimits.courses;
+  const totalCoursesUsed = profile?.usage.courses ?? courses.length;
+  const totalSemestersUsed = profile?.usage.semesters ?? semesters.length;
+
+  const yearsFromSemesters = useMemo(() => {
+    const map = new Map<string, Semester["year"]>();
+    semesters.forEach((semester) => {
+      if (semester.year) {
+        map.set(semester.year.id, semester.year);
+      }
+    });
+    return Array.from(map.values()).filter((year): year is NonNullable<Semester["year"]> => !!year);
+  }, [semesters]);
+  const sortedYearsByStart = useMemo(() => {
+    return [...yearsFromSemesters].sort(
+      (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
+    );
+  }, [yearsFromSemesters]);
+  const allowedYearId = isFree ? sortedYearsByStart[0]?.id ?? null : null;
+  const allowedSemesterId = useMemo(() => {
+    if (!isFree) return null;
+    const candidates = semesters.filter((semester) =>
+      allowedYearId ? semester.yearId === allowedYearId : true,
+    );
+    const sorted = [...candidates].sort(
+      (a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime(),
+    );
+    return sorted[0]?.id ?? null;
+  }, [allowedYearId, isFree, semesters]);
+  const allowedCourseIds = useMemo(() => {
+    if (!isFree || !selectedSemesterId || selectedSemesterId !== allowedSemesterId) {
+      return new Set<string>();
+    }
+    const sorted = [...courses]
+      .filter((course) => !course.isDemo)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    return new Set(sorted.slice(0, courseLimit).map((course) => course.id));
+  }, [allowedSemesterId, courseLimit, courses, isFree, selectedSemesterId]);
+  const lockedCourseIds = useMemo(() => {
+    if (!isFree) return new Set<string>();
+    return new Set(
+      courses
+        .filter((course) => !course.isDemo && !allowedCourseIds.has(course.id))
+        .map((course) => course.id),
+    );
+  }, [allowedCourseIds, courses, isFree]);
+  const courseQuota = isFree ? `${totalCoursesUsed}/${courseLimit}` : "Unlimited";
+  const semesterQuota = isFree ? `${totalSemestersUsed}/${semesterLimit}` : "Unlimited";
 
   useEffect(() => {
     if (!token) {
@@ -217,6 +277,22 @@ export default function Semester() {
 
   const createCourse = async (form: CourseFormData) => {
     if (!selectedSemesterId) return;
+    if (isFree) {
+      if (totalCoursesUsed >= courseLimit) {
+        openUpgradeDialog(
+          "Course limit reached",
+          "Free tier allows 3 courses. Upgrade to add more.",
+        );
+        return;
+      }
+      if (allowedSemesterId && selectedSemesterId !== allowedSemesterId) {
+        openUpgradeDialog(
+          "Upgrade to add courses",
+          "Free tier limits courses to your first semester.",
+        );
+        return;
+      }
+    }
     setLoading(true);
     try {
       const payload = {
@@ -237,6 +313,7 @@ export default function Semester() {
         setCourses((prev) => [created, ...prev]);
       }
       await loadTargetGpaSession();
+      void refreshProfile();
       toast({ title: "Course added", description: created.name });
     } catch (err) {
       toast({
@@ -250,6 +327,13 @@ export default function Semester() {
   };
 
   const updateCourse = async (courseId: string, form: CourseFormData) => {
+    if (isFree && lockedCourseIds.has(courseId)) {
+      openUpgradeDialog(
+        "Course locked on Free",
+        "Upgrade to edit additional courses.",
+      );
+      return;
+    }
     setLoading(true);
     try {
       const payload: {
@@ -294,11 +378,19 @@ export default function Semester() {
 
   const deleteCourse = async (courseId: string) => {
     if (!selectedSemesterId) return;
+    if (isFree) {
+      openUpgradeDialog(
+        "Delete locked on Free",
+        "Upgrade to delete courses.",
+      );
+      return;
+    }
     setLoading(true);
     try {
       await http(`/courses/${courseId}`, { method: "DELETE" });
       await loadCourses(selectedSemesterId);
       await loadTargetGpaSession();
+      void refreshProfile();
       toast({ title: "Course deleted" });
     } catch (err) {
       toast({
@@ -466,6 +558,22 @@ export default function Semester() {
       setDraggingCourseId(null);
       return;
     }
+    if (isFree && allowedSemesterId && selectedSemesterId !== allowedSemesterId) {
+      openUpgradeDialog(
+        "Upgrade to reorder courses",
+        "Free tier limits edits to your first semester.",
+      );
+      setDraggingCourseId(null);
+      return;
+    }
+    if (isFree && (lockedCourseIds.has(draggingCourseId) || lockedCourseIds.has(targetId))) {
+      openUpgradeDialog(
+        "Course locked on Free",
+        "Upgrade to reorder locked courses.",
+      );
+      setDraggingCourseId(null);
+      return;
+    }
     const list = [...sortedCourses];
     const fromIndex = list.findIndex((course) => course.id === draggingCourseId);
     const toIndex = list.findIndex((course) => course.id === targetId);
@@ -510,6 +618,8 @@ export default function Semester() {
   const ungradedCourseCount = Math.max(courseCount - gradedCourseCount, 0);
   const selectedSemester = semesters.find((s) => s.id === selectedSemesterId) ?? null;
   const semesterName = selectedSemester?.name ?? "Select semester";
+  const isSelectedSemesterLocked =
+    isFree && !!selectedSemesterId && !!allowedSemesterId && selectedSemesterId !== allowedSemesterId;
   const yearLabel = selectedSemester?.year?.name ?? "Academic Year";
   const selectedYearId = selectedSemester?.yearId ?? null;
   const careerTargetSession =
@@ -545,6 +655,10 @@ export default function Semester() {
   const signOut = () => {
     localStorage.clear();
     nav("/auth?mode=login");
+  };
+
+  const openUpgradeDialog = (title: string, description: string) => {
+    setUpgradeDialog({ title, description });
   };
 
   const letterToGpa = (letter: string): number | null => {
@@ -923,6 +1037,12 @@ export default function Semester() {
               </Link>
               <span className="text-muted-foreground">›</span>
               <span className="text-sm font-semibold text-foreground">{semesterName}</span>
+              {isSelectedSemesterLocked ? (
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground">
+                  <Lock className="h-3 w-3" />
+                  Locked
+                </span>
+              ) : null}
             </div>
 
             {/* Desktop Actions */}
@@ -943,7 +1063,7 @@ export default function Semester() {
                 <DropdownMenuContent align="end">
                   <DropdownMenuLabel>My Account</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => nav("/profile")}>
                     <User className="h-4 w-4 mr-2" />
                     Profile
                   </DropdownMenuItem>
@@ -977,7 +1097,7 @@ export default function Semester() {
         {/* Mobile Menu */}
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-border/50 bg-background p-4 space-y-2">
-            <Button variant="ghost" className="w-full justify-start gap-2">
+            <Button variant="ghost" className="w-full justify-start gap-2" onClick={() => nav("/profile")}>
               <User className="h-4 w-4" />
               Profile
             </Button>
@@ -995,6 +1115,26 @@ export default function Semester() {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {isFree ? (
+          <Card className="border-slate-200 mb-6">
+            <CardContent className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-700">Plan status</p>
+                <p className="text-xs text-muted-foreground">
+                  {isFree ? "Free tier limits apply." : "Paid tier unlocked."}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-3 text-xs text-slate-600">
+                <span className="rounded-full border border-slate-200 px-3 py-1">
+                  Semesters: <span className="font-semibold text-slate-900">{semesterQuota}</span>
+                </span>
+                <span className="rounded-full border border-slate-200 px-3 py-1">
+                  Courses: <span className="font-semibold text-slate-900">{courseQuota}</span>
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             {/* Stats */}
@@ -1024,11 +1164,13 @@ export default function Semester() {
 
             {/* Courses */}
             <div className="grid md:grid-cols-2 gap-4">
-              {sortedCourses.map((course) => (
+              {sortedCourses.map((course) => {
+                const isCourseLocked = lockedCourseIds.has(course.id);
+                return (
                 <div
                   key={course.id}
                   className={draggingCourseId === course.id ? "opacity-75" : ""}
-                  draggable
+                  draggable={!isFree || !isCourseLocked}
                   onMouseEnter={() => setHoveredCourseId(course.id)}
                   onMouseLeave={() => setHoveredCourseId(null)}
                   onDragStart={() => setDraggingCourseId(course.id)}
@@ -1052,6 +1194,7 @@ export default function Semester() {
                     gradingMethod={course.gradingMethod}
                     isDemo={course.isDemo}
                     isCompleted={course.isCompleted}
+                    isLocked={isCourseLocked}
                     currentGrade={course.actualPercentGrade ?? null}
                     letterGrade={course.actualLetterGrade ?? "—"}
                     targetLetter={course.desiredLetterGrade}
@@ -1072,6 +1215,7 @@ export default function Semester() {
                           setActiveModal("assignment");
                         },
                         disabled:
+                          isCourseLocked ||
                           !course.id ||
                           (course.gradingMethod !== "POINTS" &&
                             course.id === selectedCourseId &&
@@ -1085,7 +1229,7 @@ export default function Semester() {
                           await loadCategoriesAndAssignments(course.id);
                           setActiveModal("category");
                         },
-                        disabled: !course.id,
+                        disabled: isCourseLocked || !course.id,
                       },
                       {
                         label: "Edit course",
@@ -1094,12 +1238,13 @@ export default function Semester() {
                           setEditingCourse(course);
                           setActiveModal("course");
                         },
-                        disabled: !course.id,
+                        disabled: isCourseLocked || !course.id,
                       },
                     ]}
                   />
                 </div>
-              ))}
+                );
+              })}
               {courses.length === 0 && (
                 <Card className="bg-muted/30 border-dashed">
                   <CardHeader>
@@ -1160,7 +1305,26 @@ export default function Semester() {
                 <Button
                   variant="outline"
                   className="w-full justify-start gap-2"
-                  onClick={() => setActiveModal("course")}
+                  onClick={() => {
+                    if (!selectedSemesterId) return;
+                    if (isFree) {
+                      if (totalCoursesUsed >= courseLimit) {
+                        openUpgradeDialog(
+                          "Course limit reached",
+                          "Free tier allows 3 courses. Upgrade to add more.",
+                        );
+                        return;
+                      }
+                      if (allowedSemesterId && selectedSemesterId !== allowedSemesterId) {
+                        openUpgradeDialog(
+                          "Upgrade to add courses",
+                          "Free tier limits courses to your first semester.",
+                        );
+                        return;
+                      }
+                    }
+                    setActiveModal("course");
+                  }}
                   disabled={!selectedSemesterId}
                 >
                   <Plus className="h-4 w-4 text-primary" />
@@ -1354,6 +1518,17 @@ export default function Semester() {
         </div>
       </main>
 
+      <UpgradeDialog
+        open={!!upgradeDialog}
+        onOpenChange={(open) => !open && setUpgradeDialog(null)}
+        title={upgradeDialog?.title ?? "Upgrade required"}
+        description={upgradeDialog?.description ?? "Upgrade to unlock this action."}
+        onAction={() => {
+          setUpgradeDialog(null);
+          nav("/profile");
+        }}
+      />
+
       {/* Modals */}
       <CourseModal
         open={activeModal === "course"}
@@ -1370,6 +1545,8 @@ export default function Semester() {
             ? () => deleteCourse(editingCourse.id)
             : undefined
         }
+        deleteDisabled={isFree}
+        deleteDisabledMessage={isFree ? "Delete is locked on the Free tier." : undefined}
         initialData={
           editingCourse
             ? {

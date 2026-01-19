@@ -40,12 +40,15 @@ export default function Auth() {
 
     try {
       const endpoint = isLogin ? "/auth/login" : "/auth/register";
-      const res = await http<{ accessToken: string; user?: { email: string } }>(endpoint, {
+      const res = await http<{ accessToken: string; user?: { email: string; tier?: string } }>(endpoint, {
         method: "POST",
         body: JSON.stringify({ email: formData.email, password: formData.password }),
       });
       localStorage.setItem("ayg_token", res.accessToken);
       localStorage.setItem("ayg_email", formData.email);
+      if (res.user?.tier) {
+        localStorage.setItem("ayg_tier", res.user.tier);
+      }
 
       toast({
         title: isLogin ? "Welcome back!" : "Account created!",

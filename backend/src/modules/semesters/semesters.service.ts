@@ -5,10 +5,36 @@ import { UpdateSemesterDto } from './dto/update-semester.dto';
 import { computeCoursePlan } from '../courses/grade-plan.util';
 import type { GradeLetter } from '../courses/grade-plan.types';
 import { TargetGpaService } from '../target-gpa/target-gpa.service';
+import { UsersService } from '../users/users.service';
+import { FREE_LIMITS, isFreeTier } from '../../common/tier/tier.constants';
 
 @Injectable()
 export class SemestersService {
-  constructor(private prisma: PrismaService, private targetGpaService: TargetGpaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private targetGpaService: TargetGpaService,
+    private usersService: UsersService,
+  ) {}
+
+  private async getFreeAllowedYearId(userId: string) {
+    const year = await this.prisma.year.findFirst({
+      where: { userId },
+      orderBy: { startDate: 'asc' },
+      select: { id: true },
+    });
+    return year?.id ?? null;
+  }
+
+  private async getFreeAllowedSemesterId(userId: string) {
+    const allowedYearId = await this.getFreeAllowedYearId(userId);
+    if (!allowedYearId) return null;
+    const semester = await this.prisma.semester.findFirst({
+      where: { yearId: allowedYearId },
+      orderBy: { startDate: 'asc' },
+      select: { id: true },
+    });
+    return semester?.id ?? null;
+  }
 
   private async assertYearOwnership(userId: string, yearId: string) {
     const year = await this.prisma.year.findFirst({
@@ -61,6 +87,17 @@ export class SemestersService {
 
   async create(userId: string, dto: CreateSemesterDto) {
     await this.assertYearOwnership(userId, dto.yearId);
+    const tier = await this.usersService.getTier(userId);
+    if (isFreeTier(tier)) {
+      const count = await this.prisma.semester.count({ where: { year: { userId } } });
+      if (count >= FREE_LIMITS.semesters) {
+        throw new ForbiddenException('Free tier allows 1 semester.');
+      }
+      const allowedYearId = await this.getFreeAllowedYearId(userId);
+      if (allowedYearId && allowedYearId !== dto.yearId) {
+        throw new ForbiddenException('Upgrade to add semesters to additional years.');
+      }
+    }
     const year = await this.prisma.year.findUnique({
       where: { id: dto.yearId },
       select: { startDate: true, endDate: true },
@@ -99,6 +136,16 @@ export class SemestersService {
   async update(userId: string, id: string, dto: UpdateSemesterDto) {
     // Reuse ownership check
     await this.findOne(userId, id);
+    const tier = await this.usersService.getTier(userId);
+    if (isFreeTier(tier)) {
+      const allowedSemesterId = await this.getFreeAllowedSemesterId(userId);
+      if (allowedSemesterId && allowedSemesterId !== id) {
+        throw new ForbiddenException('Upgrade to edit additional semesters.');
+      }
+      if (dto.yearId !== undefined || dto.startDate !== undefined || dto.endDate !== undefined) {
+        throw new ForbiddenException('Upgrade to change semester dates or year.');
+      }
+    }
     let yearDates: { startDate: Date; endDate: Date } | null = null;
     if (dto.yearId) {
       await this.assertYearOwnership(userId, dto.yearId);
@@ -137,6 +184,10 @@ export class SemestersService {
   async remove(userId: string, id: string) {
     // Reuse ownership check
     await this.findOne(userId, id);
+    const tier = await this.usersService.getTier(userId);
+    if (isFreeTier(tier)) {
+      throw new ForbiddenException('Upgrade to delete semesters.');
+    }
     return this.prisma.semester.delete({ where: { id } });
   }
 
