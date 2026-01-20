@@ -79,7 +79,7 @@ export default function Auth() {
             <div className="w-12 h-12 rounded-xl bg-primary-foreground/20 backdrop-blur flex items-center justify-center">
               <GraduationCap className="h-7 w-7 text-primary-foreground" />
             </div>
-            <span className="text-2xl font-bold text-primary-foreground">AYG</span>
+            <span className="text-2xl font-bold text-primary-foreground">AY Grade</span>
           </Link>
           <h1 className="text-4xl lg:text-5xl font-bold text-primary-foreground mb-6 leading-tight">
             Stop guessing.
@@ -117,7 +117,7 @@ export default function Auth() {
             <div className="w-10 h-10 rounded-lg bg-gradient-primary flex items-center justify-center">
               <GraduationCap className="h-5 w-5 text-primary-foreground" />
             </div>
-            <span className="text-xl font-bold text-foreground">AYG</span>
+            <span className="text-xl font-bold text-foreground">AY Grade</span>
           </Link>
 
           <Card className="border-border/50 shadow-lg">
@@ -265,7 +265,7 @@ export default function Auth() {
           </Card>
 
           <p className="mt-6 text-center text-xs text-muted-foreground">
-            By continuing, you agree to AYG's Terms of Service and Privacy Policy.
+            By continuing, you agree to AY Grade's Terms of Service and Privacy Policy.
           </p>
         </div>
       </div>

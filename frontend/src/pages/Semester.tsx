@@ -6,6 +6,7 @@ import { ProgressRing } from "@/components/ProgressRing";
 import { CourseCard } from "@/components/CourseCard";
 import { StatCard } from "@/components/StatCard";
 import { UpgradeDialog } from "@/components/UpgradeDialog";
+import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import {
   CourseModal,
   type CourseFormData,
@@ -28,7 +29,7 @@ import {
   LogOut,
   User,
   Settings,
-  Bell,
+  HelpCircle,
   Menu,
   X,
   Sparkles,
@@ -45,6 +46,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { getStoredTier, useUserProfile, type UserTier } from "@/hooks/use-user-profile";
 import { http } from "@/lib/http";
+import { markOnboardingFromCounts, setOnboardingCourseDone, setOnboardingSemesterDone } from "@/lib/onboarding";
 
 type Semester = {
   id: string;
@@ -215,6 +217,8 @@ export default function Semester() {
     try {
       const data = await http<Semester[]>("/semesters");
       setSemesters(data ?? []);
+      markOnboardingFromCounts({ semesters: data?.length ?? 0 });
+      if (data?.length) setOnboardingSemesterDone();
       if (data?.length) {
         const storedId = localStorage.getItem(LAST_SEMESTER_KEY);
         const match = storedId ? data.find((s) => s.id === storedId) : undefined;
@@ -246,6 +250,7 @@ export default function Semester() {
     try {
       const data = await http<Course[]>(`/semesters/${semesterId}/courses`);
       setCourses(data ?? []);
+      markOnboardingFromCounts({ courses: data?.length ?? 0 });
       if (data?.length) {
         setSelectedCourseId(data[0].id);
         await loadCategoriesAndAssignments(data[0].id);
@@ -313,6 +318,7 @@ export default function Semester() {
         setCourses((prev) => [created, ...prev]);
       }
       await loadTargetGpaSession();
+      setOnboardingCourseDone();
       void refreshProfile();
       toast({ title: "Course added", description: created.name });
     } catch (err) {
@@ -1024,11 +1030,11 @@ export default function Semester() {
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-4">
-              <Link to="/" className="flex items-center gap-2">
+              <Link to="/academic-year" className="flex items-center gap-2">
                 <div className="w-9 h-9 rounded-lg bg-gradient-primary flex items-center justify-center">
                   <GraduationCap className="h-5 w-5 text-primary-foreground" />
                 </div>
-                <span className="text-xl font-bold text-foreground hidden sm:block">AYG</span>
+                <span className="text-xl font-bold text-foreground hidden sm:block">AY Grade</span>
               </Link>
 
               <span className="text-muted-foreground">›</span>
@@ -1047,8 +1053,8 @@ export default function Semester() {
 
             {/* Desktop Actions */}
             <div className="hidden md:flex items-center gap-3">
-              <Button variant="ghost" size="icon">
-                <Bell className="h-5 w-5" />
+              <Button variant="ghost" size="icon" onClick={() => nav("/docs")}>
+                <HelpCircle className="h-5 w-5" />
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -1528,6 +1534,7 @@ export default function Semester() {
           nav("/profile");
         }}
       />
+      <OnboardingChecklist />
 
       {/* Modals */}
       <CourseModal
@@ -1566,6 +1573,7 @@ export default function Semester() {
         title="Set Semester GPA"
         description="Control target grades for this semester."
         toggleLabel="Set Semester GPA"
+        infoText="Sets a GPA goal for this semester only. Target grades update for courses in this semester."
         enabled={semesterTargetActive}
         targetGpa={semesterTargetActive ? semesterTargetSession?.targetGpa ?? null : null}
         locked={semesterTargetLocked}

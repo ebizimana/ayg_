@@ -60,14 +60,14 @@ export default function Profile() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-sky-50">
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
-          <Link to="/dashboard" className="flex items-center gap-2">
+          <Link to="/academic-year" className="flex items-center gap-2">
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center">
               <GraduationCap className="h-5 w-5 text-white" />
             </div>
-            <span className="text-xl font-bold text-foreground">AYG</span>
+            <span className="text-xl font-bold text-foreground">AY Grade</span>
           </Link>
           <Button variant="outline" asChild>
-            <Link to="/dashboard">Back to Dashboard</Link>
+            <Link to="/academic-year">Back to Dashboard</Link>
           </Button>
         </div>
       </header>

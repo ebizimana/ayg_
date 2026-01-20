@@ -1,6 +1,6 @@
-# AYG: Achieve Your Grade
+# AY Grade: Achieve Your Grade
 
-AYG is a grade intelligence web application that helps students see what scores they need to reach their target course grades and GPA. The stack is split into a NestJS/Prisma backend and a Vite/React frontend.
+AY Grade is a grade intelligence web application that helps students see what scores they need to reach their target course grades and GPA. The stack is split into a NestJS/Prisma backend and a Vite/React frontend.
 
 ## Repository layout
 - `backend/` — NestJS API with Prisma ORM and PostgreSQL (Docker)

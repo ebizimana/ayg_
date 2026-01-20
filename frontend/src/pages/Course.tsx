@@ -32,12 +32,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { CourseModal } from "@/components/modals";
 import { UpgradeDialog } from "@/components/UpgradeDialog";
+import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import { useToast } from "@/hooks/use-toast";
 import { getStoredTier, useUserProfile, type UserTier } from "@/hooks/use-user-profile";
 import { http } from "@/lib/http";
+import { incrementOnboardingAssignmentCount, setOnboardingAssignmentCount } from "@/lib/onboarding";
 import {
   AlertTriangle,
-  Bell,
+  HelpCircle,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -330,6 +332,7 @@ export default function CoursePage() {
         }))
         .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
       setAssignments(mappedAssignments);
+      setOnboardingAssignmentCount(mappedAssignments.length);
 
       // load grade plan for current target to hydrate expected for remaining
       const plan = await http<GradePlan>(`/courses/${courseId}/grade-plan?desiredGrade=${desiredGrade}`);
@@ -605,6 +608,7 @@ export default function CoursePage() {
             sortOrder: created.sortOrder ?? prev.length + 1,
           },
         ]);
+        incrementOnboardingAssignmentCount(1);
       } else {
         await http(`/assignments/${payload.id}`, {
           method: "PATCH",
@@ -974,11 +978,11 @@ export default function CoursePage() {
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link to="/dashboard" className="flex items-center gap-2">
+            <Link to="/academic-year" className="flex items-center gap-2">
               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center">
                 <GraduationCap className="h-5 w-5 text-white" />
               </div>
-              <span className="text-xl font-bold text-foreground hidden sm:block">AYG</span>
+              <span className="text-xl font-bold text-foreground hidden sm:block">AY Grade</span>
             </Link>
             <span className="text-slate-400">›</span>
             <Link to="/dashboard" className="font-semibold text-slate-700 hover:text-primary">
@@ -988,8 +992,8 @@ export default function CoursePage() {
             <span className="font-semibold text-slate-700">{courseName}</span>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon">
-              <Bell className="h-5 w-5" />
+            <Button variant="ghost" size="icon" onClick={() => nav("/docs")}>
+              <HelpCircle className="h-5 w-5" />
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -1554,6 +1558,7 @@ export default function CoursePage() {
         }}
       />
 
+      <OnboardingChecklist />
       <CourseModal
         open={editCourseOpen}
         onOpenChange={setEditCourseOpen}

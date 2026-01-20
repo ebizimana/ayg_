@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { InfoPopover } from "@/components/InfoPopover";
 
 interface TargetGpaModalProps {
   open: boolean;
@@ -18,6 +19,7 @@ interface TargetGpaModalProps {
   title: string;
   description?: string;
   toggleLabel: string;
+  infoText?: string;
   enabled: boolean;
   targetGpa?: number | null;
   locked?: boolean;
@@ -31,6 +33,7 @@ export function TargetGpaModal({
   title,
   description,
   toggleLabel,
+  infoText,
   enabled,
   targetGpa,
   locked,
@@ -61,7 +64,10 @@ export function TargetGpaModal({
         <div className="space-y-4">
           <div className="flex items-center justify-between rounded-lg border p-4">
             <div className="space-y-0.5">
-              <Label htmlFor="targetGpaToggle">{toggleLabel}</Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="targetGpaToggle">{toggleLabel}</Label>
+                {infoText ? <InfoPopover text={infoText} /> : null}
+              </div>
               {locked && lockedMessage ? (
                 <p className="text-xs text-muted-foreground">{lockedMessage}</p>
               ) : null}

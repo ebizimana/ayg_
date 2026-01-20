@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { InfoPopover } from "@/components/InfoPopover";
 import {
   Select,
   SelectContent,
@@ -185,7 +186,26 @@ export function CourseModal({
               </div>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="gradingMethod">Grading Method</Label>
+              <div className="flex items-center gap-2">
+                <Label htmlFor="gradingMethod">Grading Method</Label>
+                <InfoPopover
+                  content={
+                    <div className="space-y-2">
+                      <p>
+                        Weighted uses category percentages (exams, homework, etc.). Points-based uses total points only.
+                      </p>
+                      <a
+                        href="https://youtu.be/L8U9kXX4fa0"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs font-semibold text-primary hover:underline"
+                      >
+                        Learn more
+                      </a>
+                    </div>
+                  }
+                />
+              </div>
               <Select
                 value={formData.gradingMethod}
                 onValueChange={(value) =>
@@ -204,7 +224,9 @@ export function CourseModal({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Points-based ignores category weights and uses total points. This can’t be changed after assignments exist.
+                {formData.gradingMethod === "POINTS"
+                  ? "Points-based ignores category weights and uses total points. This can’t be changed after assignments exist."
+                  : "Weighted categories let you assign percentage weights to groups (exams, homework, quizzes) to calculate the grade."}
               </p>
             </div>
             {initialData ? (

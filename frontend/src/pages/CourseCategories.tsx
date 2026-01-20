@@ -9,7 +9,7 @@ import { UpgradeDialog } from "@/components/UpgradeDialog";
 import { useToast } from "@/hooks/use-toast";
 import { getStoredTier, useUserProfile, type UserTier } from "@/hooks/use-user-profile";
 import { http } from "@/lib/http";
-import { Bell, ChevronDown, GraduationCap, GripVertical, LogOut, Plus, Settings, User, Lock } from "lucide-react";
+import { HelpCircle, ChevronDown, GraduationCap, GripVertical, LogOut, Plus, Settings, User, Lock } from "lucide-react";
 
 type Category = {
   id: string;
@@ -382,11 +382,11 @@ export default function CourseCategories() {
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link to="/dashboard" className="flex items-center gap-2">
+            <Link to="/academic-year" className="flex items-center gap-2">
               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center">
                 <GraduationCap className="h-5 w-5 text-white" />
               </div>
-              <span className="text-xl font-bold text-foreground hidden sm:block">AYG</span>
+              <span className="text-xl font-bold text-foreground hidden sm:block">AY Grade</span>
             </Link>
             <span className="text-slate-400">›</span>
             <Link to={`/courses/${courseId}`} className="font-semibold text-slate-700 hover:text-primary">
@@ -396,8 +396,8 @@ export default function CourseCategories() {
             <span className="font-semibold text-slate-700">Categories</span>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon">
-              <Bell className="h-5 w-5" />
+            <Button variant="ghost" size="icon" onClick={() => nav("/docs")}>
+              <HelpCircle className="h-5 w-5" />
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

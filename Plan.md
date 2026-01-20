@@ -1,8 +1,8 @@
-# AYG (Achieve Your Grade) — Project Status & Direction
+# AY Grade (Achieve Your Grade) — Project Status & Direction
 
-## 🎯 What AYG Is (North Star)
+## 🎯 What AY Grade Is (North Star)
 
-AYG is a **grade intelligence platform**, not just a tracker.
+AY Grade is a **grade intelligence platform**, not just a tracker.
 
 **Core promise:**
 
@@ -141,9 +141,9 @@ CRUD + ownership enforcement.
 
 ---
 
-### Step 3: Grade Engine (AYG’s Secret Sauce)
+### Step 3: Grade Engine (AY Grade’s Secret Sauce)
 
-This is what makes AYG different.
+This is what makes AY Grade different.
 
 Capabilities:
 
@@ -186,7 +186,7 @@ Once backend is solid:
 
 # 🧠 Mental Model (Important)
 
-Think of AYG as **3 engines**:
+Think of AY Grade as **3 engines**:
 
 1. **Auth Engine** → Who are you?
 2. **Academic Engine** → What are your classes?

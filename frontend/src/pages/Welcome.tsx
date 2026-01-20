@@ -59,7 +59,7 @@ export default function Welcome() {
               <div className="w-9 h-9 rounded-lg bg-gradient-primary flex items-center justify-center">
                 <GraduationCap className="h-5 w-5 text-primary-foreground" />
               </div>
-              <span className="text-xl font-bold text-foreground">AYG</span>
+              <span className="text-xl font-bold text-foreground">AY Grade</span>
             </Link>
             <div className="flex items-center gap-3">
               <Button variant="ghost" asChild>
@@ -88,7 +88,7 @@ export default function Welcome() {
               </h1>
               <p className="text-lg sm:text-xl text-muted-foreground max-w-xl">
                 Stop guessing. Know exactly what scores you need on every assignment
-                to hit your target grade. AYG turns grade tracking into grade
+                to hit your target grade. AY Grade turns grade tracking into grade
                 <em> achieving</em>.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
@@ -165,7 +165,7 @@ export default function Welcome() {
               Grade Intelligence, Not Just Tracking
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              AYG answers the question every student asks: "What do I need to get?"
+              AY Grade answers the question every student asks: "What do I need to get?"
             </p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -224,7 +224,7 @@ export default function Welcome() {
               <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center">
                 <GraduationCap className="h-4 w-4 text-primary-foreground" />
               </div>
-              <span className="font-semibold text-foreground">AYG</span>
+              <span className="font-semibold text-foreground">AY Grade</span>
             </div>
             <p className="text-sm text-muted-foreground">
               © {new Date().getFullYear()} Achieve Your Grade. Built for students, by students.

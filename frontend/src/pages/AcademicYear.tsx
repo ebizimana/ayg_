@@ -25,10 +25,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { SemesterModal, TargetGpaModal, YearModal, type SemesterFormData, type YearFormData } from "@/components/modals";
 import { UpgradeDialog } from "@/components/UpgradeDialog";
+import { OnboardingChecklist } from "@/components/OnboardingChecklist";
+import { InfoPopover } from "@/components/InfoPopover";
 import { useToast } from "@/hooks/use-toast";
 import { getStoredTier, useUserProfile, type UserTier } from "@/hooks/use-user-profile";
 import { http } from "@/lib/http";
-import { GraduationCap, Plus, Bell, User, Settings, LogOut, ChevronDown, Menu, X, MoreVertical, Lock } from "lucide-react";
+import {
+  markOnboardingFromCounts,
+  setOnboardingSemesterDone,
+  setOnboardingYearDone,
+} from "@/lib/onboarding";
+import { GraduationCap, Plus, User, Settings, LogOut, ChevronDown, Menu, X, MoreVertical, Lock, HelpCircle } from "lucide-react";
 
 type Semester = { id: string; name: string; startDate: string; endDate: string; yearId: string; createdAt?: string };
 type Year = { id: string; name: string; startDate: string; endDate: string; semesters: Semester[]; createdAt?: string };
@@ -177,6 +184,7 @@ export default function AcademicYear() {
       );
       setCoursesBySemester((prev) => ({ ...prev, [created.id]: [] }));
       void refreshProfile();
+      setOnboardingSemesterDone();
       toast({ title: "Semester added", description: created.name });
     } catch (err) {
       toast({
@@ -284,6 +292,7 @@ export default function AcademicYear() {
       });
       setYears((prev) => [...prev, { ...created, semesters: [] }]);
       void refreshProfile();
+      setOnboardingYearDone();
       toast({ title: "Year added", description: created.name });
     } catch (err) {
       toast({
@@ -531,6 +540,8 @@ export default function AcademicYear() {
         }
       });
       setCoursesBySemester(next);
+      const totalCourseCount = Object.values(next).reduce((sum, list) => sum + list.length, 0);
+      markOnboardingFromCounts({ courses: totalCourseCount });
       if (hadError) {
         toast({
           title: "Some courses failed to load",
@@ -552,6 +563,7 @@ export default function AcademicYear() {
       const data = await http<Year[]>("/years");
       setYears(data ?? []);
       const allSemesters = (data ?? []).flatMap((year) => year.semesters);
+      markOnboardingFromCounts({ years: data?.length ?? 0, semesters: allSemesters.length });
       if (allSemesters.length) {
         loadCoursesForSemesters(allSemesters);
       } else {
@@ -739,6 +751,13 @@ export default function AcademicYear() {
   const courseQuota = isFree ? `${totalCourses}/${courseLimit}` : "Unlimited";
 
   const handleSemesterClick = (semesterId: string) => {
+    if (isFree && lockedSemesterIds.has(semesterId)) {
+      openUpgradeDialog(
+        "Semester locked on Free",
+        "Upgrade to access this semester.",
+      );
+      return;
+    }
     localStorage.setItem(LAST_SEMESTER_KEY, semesterId);
     nav("/dashboard");
   };
@@ -758,18 +777,18 @@ export default function AcademicYear() {
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link to="/dashboard" className="flex items-center gap-2">
+            <div className="flex items-center gap-2">
               <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center">
                 <GraduationCap className="h-5 w-5 text-white" />
               </div>
-              <span className="text-xl font-bold text-foreground hidden sm:block">AYG</span>
-            </Link>
+              <span className="text-xl font-bold text-foreground hidden sm:block">AY Grade</span>
+            </div>
             <span className="text-slate-400">›</span>
             <span className="font-semibold text-slate-700">Academic Year</span>
           </div>
           <div className="hidden md:flex items-center gap-2">
-            <Button variant="ghost" size="icon">
-              <Bell className="h-5 w-5" />
+            <Button variant="ghost" size="icon" onClick={() => nav("/docs")}>
+              <HelpCircle className="h-5 w-5" />
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -855,7 +874,12 @@ export default function AcademicYear() {
         <div className="grid gap-4 md:grid-cols-3">
           <Card className="border-slate-200">
             <CardHeader className="pb-2">
-              <CardTitle className="text-base">Current GPA</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2">
+                Current GPA
+                <InfoPopover
+                  text="Your overall GPA based on the courses you’ve entered. Use this to track how your actual grades are trending across all semesters."
+                />
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-xs text-muted-foreground">
@@ -869,7 +893,12 @@ export default function AcademicYear() {
           <Card className="border-slate-200">
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
               <div className="flex items-center gap-2">
-                <CardTitle className="text-base">Target GPA</CardTitle>
+                <CardTitle className="text-base flex items-center gap-2">
+                  Target GPA
+                  <InfoPopover
+                    text="The GPA you’re aiming for based on your target grades. Use it to plan goals and see whether your current plan can reach them."
+                  />
+                </CardTitle>
                 {careerTargetActive ? (
                   <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
                     Active
@@ -1322,6 +1351,7 @@ export default function AcademicYear() {
         title="Set Target GPA"
         description="Control target grades across all courses."
         toggleLabel="Set Target GPA"
+        infoText="Sets a GPA goal across all years and semesters. Target grades update for all courses to help reach this goal."
         enabled={careerTargetActive}
         targetGpa={careerTargetSession?.targetGpa ?? null}
         locked={careerTargetLocked}
@@ -1452,6 +1482,7 @@ export default function AcademicYear() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <OnboardingChecklist />
     </div>
   );
 }
