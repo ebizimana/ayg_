@@ -4,6 +4,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/decorators/current-user.decorator';
 import { UsersService } from './users.service';
 import { UpdateTierDto } from './dto/update-tier.dto';
+import { UpdateCurrentGpaDto } from './dto/update-current-gpa.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('users')
@@ -18,6 +19,11 @@ export class UsersController {
   @Patch('me/tier')
   async updateTier(@CurrentUser() user: AuthUser, @Body() dto: UpdateTierDto) {
     return this.usersService.updateTier(user.userId, dto.tier);
+  }
+
+  @Patch('me/current-gpa')
+  async updateCurrentGpa(@CurrentUser() user: AuthUser, @Body() dto: UpdateCurrentGpaDto) {
+    return this.usersService.updateCurrentGpa(user.userId, dto.currentGpa);
   }
 
   @Delete('me')

@@ -38,12 +38,20 @@ export class UsersService {
   async getProfile(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, tier: true },
+      select: { id: true, email: true, tier: true, currentGpa: true },
     });
     if (!user) return null;
     const usage = await this.getUsage(userId);
     const limits = user.tier === UserTier.FREE ? FREE_LIMITS : { years: null, semesters: null, courses: null };
     return { ...user, usage, limits };
+  }
+
+  async updateCurrentGpa(userId: string, currentGpa: number) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { currentGpa },
+      select: { id: true, email: true, tier: true, currentGpa: true },
+    });
   }
 
   async updateTier(userId: string, tier: UserTier) {

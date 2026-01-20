@@ -7,6 +7,7 @@ export type UserProfile = {
   id: string;
   email: string;
   tier: UserTier;
+  currentGpa?: number | null;
   usage: { years: number; semesters: number; courses: number };
   limits: { years: number | null; semesters: number | null; courses: number | null };
 };

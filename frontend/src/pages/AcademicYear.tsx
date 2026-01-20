@@ -12,8 +12,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
@@ -23,7 +21,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { SemesterModal, TargetGpaModal, YearModal, type SemesterFormData, type YearFormData } from "@/components/modals";
+import { CurrentGpaModal, SemesterModal, TargetGpaModal, YearModal, type SemesterFormData, type YearFormData } from "@/components/modals";
 import { UpgradeDialog } from "@/components/UpgradeDialog";
 import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import { InfoPopover } from "@/components/InfoPopover";
@@ -113,9 +111,9 @@ export default function AcademicYear() {
   const [years, setYears] = useState<Year[]>([]);
   const [coursesBySemester, setCoursesBySemester] = useState<Record<string, Course[]>>({});
   const [loading, setLoading] = useState(false);
-  const [fieldOfStudy, setFieldOfStudy] = useState(localStorage.getItem("ayg_field_of_study") ?? "");
   const [targetGpaSessions, setTargetGpaSessions] = useState<TargetGpaSession[]>([]);
   const [careerTargetModalOpen, setCareerTargetModalOpen] = useState(false);
+  const [currentGpaModalOpen, setCurrentGpaModalOpen] = useState(false);
   const [activeYearId, setActiveYearId] = useState<string | null>(null);
   const [editingYear, setEditingYear] = useState<Year | null>(null);
   const [yearModalOpen, setYearModalOpen] = useState(false);
@@ -522,6 +520,25 @@ export default function AcademicYear() {
     }
   };
 
+  const handleCurrentGpaSave = async (value: number) => {
+    setLoading(true);
+    try {
+      await http("/users/me/current-gpa", {
+        method: "PATCH",
+        body: JSON.stringify({ currentGpa: value }),
+      });
+      await refreshProfile();
+    } catch (err) {
+      toast({
+        title: "Failed to update current GPA",
+        description: err instanceof Error ? err.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const loadCoursesForSemesters = async (list: Semester[]) => {
     if (!list.length) return;
     try {
@@ -673,15 +690,27 @@ export default function AcademicYear() {
     () => Object.values(coursesBySemester).flat(),
     [coursesBySemester],
   );
+  const allNonDemoCourses = useMemo(
+    () => allCourses.filter((course) => !course.isDemo),
+    [allCourses],
+  );
+  const manualCurrentGpa = profile?.currentGpa ?? null;
   const currentGpa = useMemo(
     () => calculateGpa(allCourses, (course) => course.actualLetterGrade),
     [allCourses],
   );
+  const combinedCurrentGpa = useMemo(() => {
+    if (manualCurrentGpa === null || manualCurrentGpa === undefined) return currentGpa;
+    if (currentGpa === null) return manualCurrentGpa;
+    return (manualCurrentGpa + currentGpa) / 2;
+  }, [currentGpa, manualCurrentGpa]);
   const targetGpa = useMemo(
     () => calculateGpa(allCourses.filter((course) => course.desiredLetterGrade), (course) => course.desiredLetterGrade),
     [allCourses],
   );
-  const currentGpaDisplay = currentGpa === null ? "—" : currentGpa.toFixed(2);
+  const currentGpaDisplay = combinedCurrentGpa === null ? "—" : combinedCurrentGpa.toFixed(2);
+  const currentGpaNote = manualCurrentGpa === null ? null : "Includes your starting GPA.";
+  const currentGpaActionLabel = manualCurrentGpa === null ? "Add GPA" : "Update GPA";
   const computedTargetGpaDisplay = targetGpa === null ? "—" : targetGpa.toFixed(2);
   const targetGpaDisplay = careerTargetActive
     ? careerTargetSession?.targetGpa.toFixed(2) ?? "—"
@@ -693,8 +722,8 @@ export default function AcademicYear() {
     () => years.reduce((sum, year) => sum + year.semesters.length, 0),
     [years],
   );
-  const totalCourses = allCourses.filter((course) => !course.isDemo).length;
-  const totalCredits = allCourses.reduce((sum, course) => sum + (Number(course.credits) || 0), 0);
+  const totalCourses = allNonDemoCourses.length;
+  const totalCredits = allNonDemoCourses.reduce((sum, course) => sum + (Number(course.credits) || 0), 0);
   const activeYearTargets = yearTargetSessions.length;
   const activeSemesterTargets = semesterTargetSessions.length;
   const freeLimits = { years: 1, semesters: 1, courses: 3 };
@@ -750,6 +779,72 @@ export default function AcademicYear() {
     });
     return new Set(ids);
   }, [allowedCourseIds, coursesBySemester, isFree]);
+
+  const targetScope = useMemo(() => {
+    if (careerTargetActive && careerTargetSession?.targetGpa !== undefined) {
+      return {
+        targetGpa: careerTargetSession.targetGpa,
+        courses: allNonDemoCourses,
+      };
+    }
+    if (yearTargetDisplaySession?.yearId) {
+      const year = years.find((item) => item.id === yearTargetDisplaySession.yearId);
+      const yearCourses = year
+        ? year.semesters.flatMap((semester) => coursesBySemester[semester.id] ?? [])
+        : [];
+      return {
+        targetGpa: yearTargetDisplaySession.targetGpa,
+        courses: yearCourses.filter((course) => !course.isDemo),
+      };
+    }
+    if (semesterTargetSessions[0]?.semesterId) {
+      const semesterId = semesterTargetSessions[0].semesterId;
+      const semesterCourses = coursesBySemester[semesterId] ?? [];
+      return {
+        targetGpa: semesterTargetSessions[0].targetGpa,
+        courses: semesterCourses.filter((course) => !course.isDemo),
+      };
+    }
+    return null;
+  }, [
+    allNonDemoCourses,
+    careerTargetActive,
+    careerTargetSession,
+    coursesBySemester,
+    semesterTargetSessions,
+    yearTargetDisplaySession,
+    years,
+  ]);
+
+  const targetSlack = useMemo(() => {
+    if (!targetScope) return null;
+    const totalScopeCredits = targetScope.courses.reduce(
+      (sum, course) => sum + (Number(course.credits) || 0),
+      0,
+    );
+    if (!totalScopeCredits) return null;
+    let earnedPoints = 0;
+    let completedCredits = 0;
+    targetScope.courses.forEach((course) => {
+      const credits = Number(course.credits) || 0;
+      const points = gradePoints[course.actualLetterGrade?.toUpperCase?.() ?? ""] ?? null;
+      if (points === null) return;
+      earnedPoints += points * credits;
+      completedCredits += credits;
+    });
+    const remainingCredits = Math.max(0, totalScopeCredits - completedCredits);
+    const requiredTotalPoints = targetScope.targetGpa * totalScopeCredits;
+    const neededFromRemaining = Math.max(0, requiredTotalPoints - earnedPoints);
+    const maxRemainingPoints = remainingCredits * 4;
+    const slackPointsLeftToLose = maxRemainingPoints - neededFromRemaining;
+    const requiredAvgRemaining =
+      remainingCredits > 0 ? neededFromRemaining / remainingCredits : null;
+    return {
+      neededFromRemaining,
+      slackPointsLeftToLose,
+      requiredAvgRemaining,
+    };
+  }, [targetScope]);
   const yearQuota = isFree ? `${years.length}/${yearLimit}` : "Unlimited";
   const semesterQuota = isFree ? `${totalSemesters}/${semesterLimit}` : "Unlimited";
   const courseQuota = isFree ? `${totalCourses}/${courseLimit}` : "Unlimited";
@@ -877,13 +972,32 @@ export default function AcademicYear() {
         ) : null}
         <div className="grid gap-4 md:grid-cols-3">
           <Card className="border-slate-200">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                Current GPA
-                <InfoPopover
-                  text="Your overall GPA based on the courses you’ve entered. Use this to track how your actual grades are trending across all semesters."
-                />
-              </CardTitle>
+            <CardHeader className="pb-2 flex flex-row items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base flex items-center gap-2">
+                  Current GPA
+                  <InfoPopover
+                    text="Your overall GPA based on the courses you’ve entered. Use this to track how your actual grades are trending across all semesters."
+                  />
+                </CardTitle>
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-8 w-8">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      setCurrentGpaModalOpen(true);
+                    }}
+                  >
+                    {currentGpaActionLabel}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </CardHeader>
             <CardContent>
               <p className="text-xs text-muted-foreground">
@@ -892,6 +1006,9 @@ export default function AcademicYear() {
               <div className="mt-3 text-3xl font-bold text-foreground">
                 {currentGpaDisplay}
               </div>
+              {currentGpaNote ? (
+                <p className="mt-2 text-xs text-muted-foreground">{currentGpaNote}</p>
+              ) : null}
             </CardContent>
           </Card>
           <Card className="border-slate-200">
@@ -952,20 +1069,9 @@ export default function AcademicYear() {
               </Button>
             </CardHeader>
             <CardContent>
-              <Label htmlFor="field-of-study" className="text-xs text-muted-foreground">
-                Add your major or program of study.
-              </Label>
-              <Input
-                id="field-of-study"
-                placeholder="Computer Science"
-                value={fieldOfStudy}
-                onChange={(e) => {
-                  setFieldOfStudy(e.target.value);
-                  localStorage.setItem("ayg_field_of_study", e.target.value);
-                }}
-                className="mt-2"
-                disabled
-              />
+              <p className="text-xs text-muted-foreground">
+                Import your program study pdf to auto create Year, semester and courses for you.
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -1322,12 +1428,16 @@ export default function AcademicYear() {
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-1">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Credits tracked</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                <span className="rounded bg-[#265D80]/10 px-1 py-0.5">Credits tracked</span>
+              </p>
               <p className="text-2xl font-semibold text-slate-900">{totalCredits.toFixed(1)}</p>
               <p className="text-xs text-muted-foreground">{years.length} years • {totalSemesters} semesters</p>
             </div>
             <div className="space-y-1">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Active targets</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                <span className="rounded bg-[#265D80]/10 px-1 py-0.5">Active targets</span>
+              </p>
               <p className="text-2xl font-semibold text-slate-900">
                 {careerTargetActive ? "Career" : activeYearTargets + activeSemesterTargets}
               </p>
@@ -1337,6 +1447,48 @@ export default function AcademicYear() {
                   : `${activeYearTargets} year • ${activeSemesterTargets} semester`}
               </p>
             </div>
+            {targetSlack ? (
+              <>
+                <div className="space-y-1">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    <span className="rounded bg-[#265D80]/10 px-1 py-0.5">Points needed</span>
+                  </p>
+                  <p className="text-2xl font-semibold text-slate-900">
+                    {targetSlack.neededFromRemaining.toFixed(2)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">to hit target GPA</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    <span className="rounded bg-[#265D80]/10 px-1 py-0.5">Required avg</span>
+                  </p>
+                  <p className="text-2xl font-semibold text-slate-900">
+                    {targetSlack.requiredAvgRemaining === null
+                      ? "—"
+                      : targetSlack.requiredAvgRemaining.toFixed(2)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    on remaining credits
+                  </p>
+                </div>
+                <div className="space-y-1 col-span-full text-center">
+                  <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                    <span className="rounded bg-[#265D80]/10 px-1 py-0.5">Points you can still lose</span>
+                  </p>
+                  <p className="text-2xl font-semibold text-slate-900">
+                    {Math.max(0, targetSlack.slackPointsLeftToLose).toFixed(2)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    buffer before missing target
+                  </p>
+                  {targetSlack.slackPointsLeftToLose < 0 ? (
+                    <p className="text-xs text-destructive">
+                      Target GPA is currently out of reach based on remaining credits.
+                    </p>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
             {careerTargetActive && targetGpaMax !== null && targetGpaShortfall !== null ? (
               <div className="col-span-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                 Max achievable GPA: {targetGpaMax.toFixed(2)} • Shortfall: {targetGpaShortfall.toFixed(2)}
@@ -1358,6 +1510,13 @@ export default function AcademicYear() {
         locked={careerTargetLocked}
         lockedMessage={careerTargetLocked ? targetGpaLockedMessage : undefined}
         onSave={handleCareerTargetSave}
+      />
+
+      <CurrentGpaModal
+        open={currentGpaModalOpen}
+        onOpenChange={setCurrentGpaModalOpen}
+        currentGpa={manualCurrentGpa}
+        onSave={handleCurrentGpaSave}
       />
 
       <UpgradeDialog
