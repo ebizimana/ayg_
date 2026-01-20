@@ -383,8 +383,8 @@ export default function CourseCategories() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-slate-50 pb-12">
-      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
+    <div className="min-h-screen bg-background pb-12">
+      <header className="sticky top-0 z-40 bg-background/90 backdrop-blur border-b border-border">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link to="/academic-year" className="flex items-center gap-2">
@@ -393,12 +393,12 @@ export default function CourseCategories() {
               </div>
               <span className="text-xl font-bold text-foreground hidden sm:block">AY Grade</span>
             </Link>
-            <span className="text-slate-400">›</span>
-            <Link to={`/courses/${courseId}`} className="font-semibold text-slate-700 hover:text-primary">
+            <span className="text-muted-foreground">›</span>
+            <Link to={`/courses/${courseId}`} className="font-semibold text-foreground hover:text-primary">
               {courseName}
             </Link>
-            <span className="text-slate-400">›</span>
-            <span className="font-semibold text-slate-700">Categories</span>
+            <span className="text-muted-foreground">›</span>
+            <span className="font-semibold text-foreground">Categories</span>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" onClick={() => nav("/docs")}>
@@ -443,20 +443,20 @@ export default function CourseCategories() {
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-6">
         {isCourseLocked ? (
-          <Card className="border-amber-200 bg-amber-50">
-            <CardContent className="flex items-center gap-3 py-4 text-sm text-amber-900">
+          <Card className="border-border bg-muted/60">
+            <CardContent className="flex items-center gap-3 py-4 text-sm text-foreground">
               <Lock className="h-4 w-4" />
               This course is locked on the Free tier. Upgrade to edit categories.
             </CardContent>
           </Card>
         ) : null}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-2xl border border-slate-200 bg-white/90 shadow-md backdrop-blur px-5 py-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 rounded-2xl border border-border bg-card/90 shadow-md backdrop-blur px-5 py-4">
           <div>
             <p className="text-xs uppercase tracking-[0.15em] text-primary font-semibold">Course</p>
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold text-foreground">{courseName}</h1>
               {isCourseLocked ? (
-                <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs font-semibold text-muted-foreground">
                   <Lock className="h-3 w-3" />
                   Locked
                 </span>
@@ -468,7 +468,7 @@ export default function CourseCategories() {
             Back to course
           </Button>
         </div>
-        <Card className="border-slate-200 shadow-lg">
+        <Card className="border-border shadow-lg">
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-xl">Manage categories</CardTitle>
             <Button
@@ -481,7 +481,7 @@ export default function CourseCategories() {
           </CardHeader>
           <CardContent className="overflow-hidden">
             <TooltipProvider>
-              <div className="grid grid-cols-[48px_1fr_100px_120px_140px_120px_120px] bg-slate-50 text-sm font-semibold text-slate-600 rounded-t-lg border border-slate-200">
+              <div className="grid grid-cols-[48px_1fr_100px_120px_140px_120px_120px] bg-muted text-sm font-semibold text-muted-foreground rounded-t-lg border border-border">
               <div className="px-4 py-3 flex items-center">
                 <span className="sr-only">Drag</span>
               </div>
@@ -548,11 +548,11 @@ export default function CourseCategories() {
               </button>
               </div>
             </TooltipProvider>
-            <div className="divide-y divide-slate-200 border border-t-0 border-slate-200 rounded-b-lg">
+            <div className="divide-y divide-border border border-t-0 border-border rounded-b-lg">
               {sortedCategories.map((cat) => (
                 <div
                   key={cat.id}
-                  className={`grid grid-cols-[48px_1fr_100px_120px_140px_120px_120px] items-center bg-white hover:bg-slate-50 transition-colors ${draggingId === cat.id ? "opacity-75" : ""}`}
+                  className={`grid grid-cols-[48px_1fr_100px_120px_140px_120px_120px] items-center bg-card hover:bg-muted/70 transition-colors ${draggingId === cat.id ? "opacity-75" : ""}`}
                   draggable={!isFree || !isCourseLocked}
                   onDragStart={() => {
                     if (isFree && isCourseLocked) return;
@@ -562,7 +562,7 @@ export default function CourseCategories() {
                   onDrop={() => handleDrop(cat.id)}
                   onClick={() => openEdit(cat)}
                 >
-                  <div className="px-4 py-3 flex items-center text-slate-400" onClick={(e) => e.stopPropagation()}>
+                  <div className="px-4 py-3 flex items-center text-muted-foreground" onClick={(e) => e.stopPropagation()}>
                     <GripVertical className="h-5 w-5" />
                   </div>
                   <div className="px-4 py-3 text-left font-semibold text-foreground">
@@ -594,25 +594,25 @@ export default function CourseCategories() {
           </CardContent>
         </Card>
 
-        <Card className="border-slate-200 shadow-md bg-white/90">
+        <Card className="border-border shadow-md bg-card/90">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Category summary</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-[auto_1fr_1fr] sm:items-center">
             {isPointsBased ? (
-              <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-5 text-center">
+              <div className="rounded-xl border border-border bg-muted/70 px-4 py-5 text-center">
                 <p className="text-sm text-muted-foreground">Total Points</p>
                 <p className="text-3xl font-bold text-foreground">{Math.round(totalPoints)}</p>
               </div>
             ) : (
-              <div className="flex items-center gap-4 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+              <div className="flex items-center gap-4 rounded-xl border border-border bg-muted/70 px-4 py-3">
                 <div
                   className="flex h-24 w-24 items-center justify-center rounded-full"
                   style={{
                     background: `conic-gradient(#10b981 ${Math.min(100, Math.round(totalWeight))}%, #e2e8f0 0)`,
                   }}
                 >
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-lg font-bold text-foreground">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-card text-lg font-bold text-foreground">
                     {Math.round(totalWeight)}%
                   </div>
                 </div>
@@ -622,11 +622,11 @@ export default function CourseCategories() {
                 </div>
               </div>
             )}
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-center">
+            <div className="rounded-xl border border-border bg-muted/70 px-4 py-3 text-center">
               <p className="text-sm text-muted-foreground">Total Categories</p>
               <p className="text-2xl font-bold text-foreground">{categories.length}</p>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-right">
+            <div className="rounded-xl border border-border bg-muted/70 px-4 py-3 text-right">
               <p className="text-sm text-muted-foreground">Total Assignments</p>
               <p className="text-2xl font-bold text-foreground">{totalAssignments}</p>
             </div>

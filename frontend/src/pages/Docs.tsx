@@ -559,8 +559,8 @@ export default function Docs() {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-sky-50">
-      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-40 bg-background/90 backdrop-blur border-b border-border">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <Link to="/academic-year" className="flex items-center gap-2">
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center">
@@ -575,9 +575,9 @@ export default function Docs() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white/85 p-6 sm:p-10 shadow-lg">
+        <section className="relative overflow-hidden rounded-2xl border border-border bg-card/85 p-6 sm:p-10 shadow-lg">
           <div className="absolute -top-28 -right-20 h-56 w-56 rounded-full bg-gradient-to-br from-primary/25 to-accent/20 blur-3xl" />
-          <div className="absolute -bottom-24 -left-20 h-56 w-56 rounded-full bg-gradient-to-tr from-sky-200/40 to-primary/20 blur-3xl" />
+          <div className="absolute -bottom-24 -left-20 h-56 w-56 rounded-full bg-gradient-to-tr from-primary/20 to-primary/10 blur-3xl" />
           <div className="relative z-10 space-y-4">
             <Badge variant="secondary" className="w-fit uppercase tracking-[0.2em]">
               Docs
@@ -594,7 +594,7 @@ export default function Docs() {
                   key={section}
                   type="button"
                   onClick={() => setActive(section)}
-                  className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-xs font-medium text-slate-700 transition hover:border-primary hover:text-primary"
+                  className="rounded-full border border-border bg-card/80 px-3 py-1 text-xs font-medium text-muted-foreground transition hover:border-primary hover:text-primary"
                 >
                   {section}
                 </button>
@@ -604,7 +604,7 @@ export default function Docs() {
         </section>
 
         <div className="grid gap-6 md:grid-cols-[240px,1fr]">
-          <Card className="h-fit border-slate-200 md:sticky md:top-24">
+          <Card className="h-fit border-border md:sticky md:top-24">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Navigate</CardTitle>
             </CardHeader>
@@ -639,7 +639,7 @@ export default function Docs() {
           </Card>
 
           <div className="space-y-5">
-            <Card className="border-slate-200 bg-white/90 shadow-sm">
+            <Card className="border-border bg-card/90 shadow-sm">
               <CardHeader className="pb-2 space-y-3">
                 <div className="flex items-center gap-2">
                   <Badge className="bg-primary/10 text-primary border border-primary/20" variant="outline">
@@ -655,16 +655,16 @@ export default function Docs() {
                 </div>
               </CardHeader>
               {activeContent.bullets ? (
-                <CardContent className="pt-0 text-sm text-slate-700">
+                <CardContent className="pt-0 text-sm text-foreground">
                   {isStructureSection ? (
                     <div className="grid gap-3 md:grid-cols-2">
                       {activeContent.bullets.map((item) => (
                         <div
                           key={item}
-                          className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+                          className="rounded-xl border border-border bg-card p-4 shadow-sm"
                         >
                           <div className="mb-2 h-1 w-10 rounded-full bg-gradient-to-r from-primary to-accent" />
-                          <p className="text-sm text-slate-700">{item}</p>
+                          <p className="text-sm text-foreground">{item}</p>
                         </div>
                       ))}
                     </div>
@@ -685,7 +685,7 @@ export default function Docs() {
             {activeContent.steps ? (
               <div className="grid gap-4">
                 {activeContent.steps.map((step, index) => (
-                  <Card key={step.title} className="border-slate-200 bg-white/90 shadow-sm">
+                  <Card key={step.title} className="border-border bg-card/90 shadow-sm">
                     <CardHeader className="pb-2 flex flex-row items-start gap-4">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-sm font-semibold text-primary">
                         {index + 1}
@@ -696,7 +696,7 @@ export default function Docs() {
                       </div>
                     </CardHeader>
                     {step.groups ? (
-                      <CardContent className="pt-0 text-sm text-slate-700 space-y-3">
+                      <CardContent className="pt-0 text-sm text-foreground space-y-3">
                         {step.groups.map((group) => (
                           <div key={group.title} className="space-y-2">
                             {group.title ? (
@@ -719,7 +719,7 @@ export default function Docs() {
                         ) : null}
                       </CardContent>
                     ) : step.bullets ? (
-                      <CardContent className="pt-0 text-sm text-slate-700 space-y-3">
+                      <CardContent className="pt-0 text-sm text-foreground space-y-3">
                         <ul className="space-y-2">
                           {step.bullets.map((item) => (
                             <li key={item} className="flex gap-3">
@@ -743,8 +743,8 @@ export default function Docs() {
             ) : null}
 
             {activeContent.note ? (
-              <Card className="border-amber-200 bg-gradient-to-r from-amber-50 via-amber-50 to-white">
-                <CardContent className="py-3 text-sm text-amber-900">
+              <Card className="border-border bg-muted/70">
+                <CardContent className="py-3 text-sm text-foreground">
                   {activeContent.note}
                 </CardContent>
               </Card>

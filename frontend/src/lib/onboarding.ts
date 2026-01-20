@@ -4,6 +4,9 @@ const STORAGE_KEYS = {
   courseDone: "ayg_onboarding_course_done",
   assignmentCount: "ayg_onboarding_assignment_count",
   helpDone: "ayg_onboarding_help_done",
+  profileNameDone: "ayg_onboarding_profile_name_done",
+  profilePhotoDone: "ayg_onboarding_profile_photo_done",
+  themeDone: "ayg_onboarding_theme_done",
 } as const;
 
 export type OnboardingStatus = {
@@ -12,11 +15,19 @@ export type OnboardingStatus = {
   courseDone: boolean;
   assignmentCount: number;
   helpDone: boolean;
+  profileNameDone: boolean;
+  profilePhotoDone: boolean;
+  themeDone: boolean;
 };
 
 const readFlag = (key: string) => {
   if (typeof window === "undefined") return false;
   return localStorage.getItem(key) === "true";
+};
+
+const readValue = (key: string) => {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(key);
 };
 
 const readCount = (key: string) => {
@@ -46,6 +57,15 @@ export const getOnboardingStatus = (): OnboardingStatus => ({
   courseDone: readFlag(STORAGE_KEYS.courseDone),
   assignmentCount: readCount(STORAGE_KEYS.assignmentCount),
   helpDone: readFlag(STORAGE_KEYS.helpDone),
+  profileNameDone:
+    readFlag(STORAGE_KEYS.profileNameDone) ||
+    Boolean(readValue("ayg_display_name")?.trim()),
+  profilePhotoDone:
+    readFlag(STORAGE_KEYS.profilePhotoDone) ||
+    Boolean(readValue("ayg_profile_photo")),
+  themeDone:
+    readFlag(STORAGE_KEYS.themeDone) ||
+    Boolean(readValue("theme")),
 });
 
 export const setOnboardingYearDone = () => {
@@ -72,6 +92,21 @@ export const setOnboardingAssignmentCount = (count: number) => {
 
 export const setOnboardingHelpDone = () => {
   writeFlag(STORAGE_KEYS.helpDone, true);
+  notifyOnboardingUpdate();
+};
+
+export const setOnboardingProfileNameDone = () => {
+  writeFlag(STORAGE_KEYS.profileNameDone, true);
+  notifyOnboardingUpdate();
+};
+
+export const setOnboardingProfilePhotoDone = () => {
+  writeFlag(STORAGE_KEYS.profilePhotoDone, true);
+  notifyOnboardingUpdate();
+};
+
+export const setOnboardingThemeDone = () => {
+  writeFlag(STORAGE_KEYS.themeDone, true);
   notifyOnboardingUpdate();
 };
 

@@ -978,8 +978,8 @@ export default function CoursePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-white to-slate-50 pb-12">
-      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
+    <div className="min-h-screen bg-background pb-12">
+      <header className="sticky top-0 z-40 bg-background/90 backdrop-blur border-b border-border">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link to="/academic-year" className="flex items-center gap-2">
@@ -988,12 +988,12 @@ export default function CoursePage() {
               </div>
               <span className="text-xl font-bold text-foreground hidden sm:block">AY Grade</span>
             </Link>
-            <span className="text-slate-400">›</span>
-            <Link to="/dashboard" className="font-semibold text-slate-700 hover:text-primary">
+            <span className="text-muted-foreground">›</span>
+            <Link to="/dashboard" className="font-semibold text-foreground hover:text-primary">
               {semesterName}
             </Link>
-            <span className="text-slate-400">›</span>
-            <span className="font-semibold text-slate-700">{courseName}</span>
+            <span className="text-muted-foreground">›</span>
+            <span className="font-semibold text-foreground">{courseName}</span>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" onClick={() => nav("/docs")}>
@@ -1038,15 +1038,15 @@ export default function CoursePage() {
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 space-y-6">
         {isCourseLocked ? (
-          <Card className="border-amber-200 bg-amber-50">
-            <CardContent className="flex items-center gap-3 py-4 text-sm text-amber-900">
+          <Card className="border-border bg-muted/60">
+            <CardContent className="flex items-center gap-3 py-4 text-sm text-foreground">
               <Lock className="h-4 w-4" />
               This course is locked on the Free tier. Upgrade to edit or delete it.
             </CardContent>
           </Card>
         ) : null}
         <div className="sticky top-16 z-30">
-          <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white/90 shadow-md backdrop-blur">
+          <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card/90 shadow-md backdrop-blur">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 px-5 py-4">
               <div className="flex items-center gap-4">
                 <div
@@ -1164,7 +1164,7 @@ export default function CoursePage() {
             <div className="flex justify-center px-5 pb-4">
               <div className="flex flex-wrap items-center justify-center gap-2">
                 <Button
-                  className="gap-2 bg-[#faf1e4] text-[#343434] hover:bg-[#f3e5d3]"
+                  className="gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80"
                   onClick={() => {
                     if (isFree && isCourseLocked) {
                       openUpgradeDialog(
@@ -1212,9 +1212,9 @@ export default function CoursePage() {
             </CardContent>
           </Card>
         ) : (
-          <Card className="border-slate-200 shadow-lg">
+          <Card className="border-border shadow-lg">
             <CardContent className="p-6 overflow-hidden">
-              <div className="grid grid-cols-12 bg-slate-50 text-sm font-semibold text-slate-600 rounded-t-lg border border-slate-200">
+              <div className="grid grid-cols-12 bg-muted text-sm font-semibold text-muted-foreground rounded-t-lg border border-border">
                 <div className="col-span-1 px-4 py-3 flex items-center">
                   <span className="sr-only">Drag</span>
                 </div>
@@ -1247,11 +1247,11 @@ export default function CoursePage() {
                   {sortBy === "category" && <ChevronUp className={`h-4 w-4 ${sortDir === "desc" ? "rotate-180" : ""}`} />}
                 </button>
               </div>
-              <div className="divide-y divide-slate-200 border border-t-0 border-slate-200 rounded-b-lg">
+              <div className="divide-y divide-border border border-t-0 border-border rounded-b-lg">
                 {sortedAssignments.map((assignment) => (
                   <div
                     key={assignment.id}
-                    className={`grid grid-cols-12 items-center bg-white hover:bg-slate-50 transition-colors ${
+                    className={`grid grid-cols-12 items-center bg-card hover:bg-muted/70 transition-colors ${
                       draggingId === assignment.id ? "opacity-75" : ""
                     }`}
                     draggable
@@ -1261,7 +1261,7 @@ export default function CoursePage() {
                     onClick={() => openEditor(assignment)}
                   >
                     <div
-                      className="col-span-1 px-4 py-3 flex items-center text-slate-400"
+                      className="col-span-1 px-4 py-3 flex items-center text-muted-foreground"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <GripVertical className="h-5 w-5" />
@@ -1312,7 +1312,7 @@ export default function CoursePage() {
         )}
 
         <div className="grid gap-4 md:grid-cols-3">
-          <Card className="border-slate-200 shadow-md">
+          <Card className="border-border shadow-md">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Current grade</CardTitle>
             </CardHeader>
@@ -1353,7 +1353,7 @@ export default function CoursePage() {
           </CardContent>
           </Card>
 
-          <Card className="border-slate-200 shadow-md">
+          <Card className="border-border shadow-md">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Points left to lose</CardTitle>
             </CardHeader>
@@ -1388,7 +1388,7 @@ export default function CoursePage() {
             </CardContent>
           </Card>
 
-          <Card className="border-slate-200 shadow-md">
+          <Card className="border-border shadow-md">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Status</CardTitle>
             </CardHeader>
@@ -1397,12 +1397,12 @@ export default function CoursePage() {
                 <div className="inline-flex items-center gap-2 rounded-full border px-4 py-1.5 text-sm font-semibold">
                 {!hasRun ? (
                   <>
-                    <AlertTriangle className="h-4 w-4 text-slate-400" />
+                    <AlertTriangle className="h-4 w-4 text-muted-foreground" />
                     <span>Run to see status</span>
                   </>
                 ) : pointsLeftToLose === null ? (
                   <>
-                    <AlertTriangle className="h-4 w-4 text-slate-400" />
+                    <AlertTriangle className="h-4 w-4 text-muted-foreground" />
                     <span>Waiting on grades</span>
                   </>
                 ) : pointsLeftToLose > 0 ? (

@@ -28,7 +28,10 @@ export function OnboardingChecklist() {
     status.semesterDone &&
     status.courseDone &&
     assignmentsDone &&
-    status.helpDone;
+    status.helpDone &&
+    status.profileNameDone &&
+    status.profilePhotoDone &&
+    status.themeDone;
 
   const items = useMemo(
     () => [
@@ -41,9 +44,29 @@ export function OnboardingChecklist() {
         detail: `${Math.min(status.assignmentCount, ASSIGNMENT_TARGET)}/${ASSIGNMENT_TARGET}`,
       },
       {
+        label: "Update your profile name",
+        done: status.profileNameDone,
+        actionLabel: "Open",
+        actionTo: "/profile",
+      },
+      {
+        label: "Add a profile photo",
+        done: status.profilePhotoDone,
+        actionLabel: "Open",
+        actionTo: "/profile",
+      },
+      {
+        label: "Choose a theme",
+        done: status.themeDone,
+        actionLabel: "Open",
+        actionTo: "/profile",
+      },
+      {
         label: "Open the help guide",
         done: status.helpDone,
         actionLabel: "Open",
+        actionTo: "/docs",
+        onAction: setOnboardingHelpDone,
       },
     ],
     [
@@ -51,6 +74,9 @@ export function OnboardingChecklist() {
       status.assignmentCount,
       status.courseDone,
       status.helpDone,
+      status.profileNameDone,
+      status.profilePhotoDone,
+      status.themeDone,
       status.semesterDone,
       status.yearDone,
     ],
@@ -59,9 +85,9 @@ export function OnboardingChecklist() {
   if (allDone || dismissed) return null;
 
   return (
-    <Card className="fixed bottom-6 right-6 z-50 w-[280px] border-slate-200 bg-white shadow-lg">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+    <Card className="fixed bottom-6 right-6 z-50 w-[280px] border-border bg-card shadow-lg">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <CheckCircle2 className="h-4 w-4 text-emerald-600" />
           Getting started
         </div>
@@ -88,7 +114,7 @@ export function OnboardingChecklist() {
         <div className="px-4 py-3 space-y-2 text-sm">
           {items.map((item) => (
             <div key={item.label} className="flex items-center justify-between gap-2">
-              <span className={item.done ? "text-slate-400 line-through" : "text-slate-700"}>
+              <span className={item.done ? "text-muted-foreground line-through" : "text-foreground"}>
                 {item.label}
               </span>
               {item.actionLabel ? (
@@ -98,12 +124,12 @@ export function OnboardingChecklist() {
                   className="h-7 px-2 text-xs"
                   asChild
                 >
-                  <Link to="/docs" onClick={() => setOnboardingHelpDone()}>
+                  <Link to={item.actionTo ?? "/"} onClick={item.onAction}>
                     {item.actionLabel}
                   </Link>
                 </Button>
               ) : item.detail ? (
-                <span className="text-xs text-slate-500">{item.detail}</span>
+                <span className="text-xs text-muted-foreground">{item.detail}</span>
               ) : null}
             </div>
           ))}

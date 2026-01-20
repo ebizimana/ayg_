@@ -872,8 +872,8 @@ export default function AcademicYear() {
 
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-sky-50">
-      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-40 bg-background/90 backdrop-blur border-b border-border">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
@@ -882,8 +882,8 @@ export default function AcademicYear() {
               </div>
               <span className="text-xl font-bold text-foreground hidden sm:block">AY Grade</span>
             </div>
-            <span className="text-slate-400">›</span>
-            <span className="font-semibold text-slate-700">Academic Year</span>
+            <span className="text-muted-foreground">›</span>
+            <span className="font-semibold text-foreground">Academic Year</span>
           </div>
           <div className="hidden md:flex items-center gap-2">
             <Button variant="ghost" size="icon" onClick={() => nav("/docs")}>
@@ -934,7 +934,7 @@ export default function AcademicYear() {
       </header>
 
       {mobileMenuOpen && (
-        <div className="md:hidden border-b border-slate-200 bg-white/95 px-4 py-3 space-y-2">
+        <div className="md:hidden border-b border-border bg-background/95 px-4 py-3 space-y-2">
           <Button variant="ghost" className="w-full justify-start gap-2" onClick={() => nav("/profile")}>
             <User className="h-4 w-4" />
             Profile
@@ -948,30 +948,30 @@ export default function AcademicYear() {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 space-y-8">
         {isFree ? (
-          <Card className="border-slate-200">
+          <Card className="border-border">
             <CardContent className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-sm font-semibold text-slate-700">Plan status</p>
+                <p className="text-sm font-semibold text-foreground">Plan status</p>
                 <p className="text-xs text-muted-foreground">
                   {isFree ? "Free tier limits apply." : "Paid tier unlocked."}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-3 text-xs text-slate-600">
-                <span className="rounded-full border border-slate-200 px-3 py-1">
-                  Years: <span className="font-semibold text-slate-900">{yearQuota}</span>
+              <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                <span className="rounded-full border border-border px-3 py-1">
+                  Years: <span className="font-semibold text-foreground">{yearQuota}</span>
                 </span>
-                <span className="rounded-full border border-slate-200 px-3 py-1">
-                  Semesters: <span className="font-semibold text-slate-900">{semesterQuota}</span>
+                <span className="rounded-full border border-border px-3 py-1">
+                  Semesters: <span className="font-semibold text-foreground">{semesterQuota}</span>
                 </span>
-                <span className="rounded-full border border-slate-200 px-3 py-1">
-                  Courses: <span className="font-semibold text-slate-900">{courseQuota}</span>
+                <span className="rounded-full border border-border px-3 py-1">
+                  Courses: <span className="font-semibold text-foreground">{courseQuota}</span>
                 </span>
               </div>
             </CardContent>
           </Card>
         ) : null}
         <div className="grid gap-4 md:grid-cols-3">
-          <Card className="border-slate-200">
+          <Card className="border-border">
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
               <div className="flex items-center gap-2">
                 <CardTitle className="text-base flex items-center gap-2">
@@ -1011,7 +1011,7 @@ export default function AcademicYear() {
               ) : null}
             </CardContent>
           </Card>
-          <Card className="border-slate-200">
+          <Card className="border-border">
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
               <div className="flex items-center gap-2">
                 <CardTitle className="text-base flex items-center gap-2">
@@ -1056,7 +1056,7 @@ export default function AcademicYear() {
               ) : null}
             </CardContent>
           </Card>
-          <Card className="border-slate-200 opacity-70">
+          <Card className="border-border opacity-70">
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
               <div className="flex items-center gap-2">
                 <CardTitle className="text-base">Field of study</CardTitle>
@@ -1081,10 +1081,21 @@ export default function AcademicYear() {
             const isYearLocked = lockedYearIds.has(year.id);
             const canEditYear = !isFree || !isYearLocked;
             const canAddSemester = !isFree || (!isYearLocked && totalSemesters < semesterLimit);
+            const yearCourses = year.semesters.flatMap(
+              (semester) => coursesBySemester[semester.id] ?? [],
+            );
+            const yearCurrentGpa = calculateGpa(yearCourses, (course) => course.actualLetterGrade);
+            const yearCurrentGpaDisplay = yearCurrentGpa === null ? "—" : yearCurrentGpa.toFixed(2);
+            const yearTargetSession =
+              yearTargetSessions.find((session) => session.yearId === year.id) ?? null;
+            const yearTargetGpa =
+              calculateGpa(yearCourses, (course) => course.desiredLetterGrade) ??
+              (yearTargetSession ? yearTargetSession.targetGpa : null);
+            const yearTargetGpaDisplay = yearTargetGpa === null ? "—" : yearTargetGpa.toFixed(2);
             return (
             <Card
               key={year.id}
-              className={`border-slate-200 shadow-sm ${isYearLocked ? "opacity-70" : ""}`}
+              className={`border-border shadow-sm ${isYearLocked ? "opacity-70" : ""}`}
               onDragOver={(event) => event.preventDefault()}
               onDrop={() => {
                 if (draggedSemesterId) {
@@ -1114,7 +1125,7 @@ export default function AcademicYear() {
                     {year.name}
                   </Button>
                   {isYearLocked ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500">
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground">
                       <Lock className="h-3 w-3" />
                       Locked
                     </span>
@@ -1166,6 +1177,14 @@ export default function AcademicYear() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                   </div>
+                  <div className="flex flex-wrap items-center justify-center gap-2 md:flex-1">
+                  <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                    Current GPA: {yearCurrentGpaDisplay}
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                    Target GPA: {yearTargetGpaDisplay}
+                  </span>
+                  </div>
                   <Button
                     size="sm"
                     className="justify-center md:w-auto bg-[#265D80] text-white hover:bg-[#1f4d6a]"
@@ -1215,7 +1234,7 @@ export default function AcademicYear() {
                         return (
                           <Card
                             key={semester.id}
-                            className={`border-slate-200 shadow-sm ${isSemesterLocked ? "opacity-70" : ""}`}
+                            className={`border-border shadow-sm ${isSemesterLocked ? "opacity-70" : ""}`}
                             draggable={!isFree}
                             onDragStart={(event) => {
                               event.dataTransfer.setData("text/plain", semester.id);
@@ -1224,17 +1243,17 @@ export default function AcademicYear() {
                             onDragEnd={() => setDraggedSemesterId(null)}
                           >
                             <CardContent className="p-0 overflow-hidden">
-                              <div className="border-b border-slate-200 bg-slate-50 px-2 py-2">
+                              <div className="border-b border-border bg-muted px-2 py-2">
                                 <div className="flex items-center justify-between gap-2">
                                   <Button
                                     variant="link"
-                                    className="h-auto p-0 text-sm font-semibold text-slate-800 underline underline-offset-4 hover:text-primary"
+                                    className="h-auto p-0 text-sm font-semibold text-foreground underline underline-offset-4 hover:text-primary"
                                     onClick={() => handleSemesterClick(semester.id)}
                                   >
                                     {semester.name}
                                   </Button>
                                   {isSemesterLocked ? (
-                                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500">
+                                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground">
                                       <Lock className="h-3 w-3" />
                                       Locked
                                     </span>
@@ -1252,7 +1271,7 @@ export default function AcademicYear() {
                                         className="h-8 w-8"
                                         onClick={(event) => event.stopPropagation()}
                                       >
-                                        <Settings className="h-4 w-4 text-slate-500" />
+                                        <Settings className="h-4 w-4 text-muted-foreground" />
                                       </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end">
@@ -1285,7 +1304,7 @@ export default function AcademicYear() {
                                   </DropdownMenu>
                                 </div>
                               </div>
-                              <div className="grid min-w-0 grid-cols-[1fr,60px,80px,80px] gap-2 px-4 py-2 text-xs font-semibold uppercase text-slate-500">
+                              <div className="grid min-w-0 grid-cols-[1fr,60px,80px,80px] gap-2 px-4 py-2 text-xs font-semibold uppercase text-muted-foreground">
                                 <span>Course</span>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -1306,7 +1325,7 @@ export default function AcademicYear() {
                                   <TooltipContent>Target grade</TooltipContent>
                                 </Tooltip>
                               </div>
-                              <div className="divide-y divide-slate-100">
+                              <div className="divide-y divide-border">
                                 {courses.length === 0 ? (
                                   <div className="grid min-w-0 grid-cols-[1fr,60px,80px,80px] gap-2 px-4 py-3 text-sm text-muted-foreground">
                                     <span className="col-span-4">No courses yet.</span>
@@ -1318,16 +1337,16 @@ export default function AcademicYear() {
                                       <div
                                         key={course.id}
                                         className={`grid min-w-0 grid-cols-[1fr,60px,80px,80px] gap-2 px-4 py-2 text-sm ${
-                                          isCourseLocked ? "text-slate-400" : "text-slate-700"
+                                          isCourseLocked ? "text-muted-foreground" : "text-foreground"
                                         }`}
                                       >
                                         <Tooltip>
                                           <TooltipTrigger asChild>
                                             <Link
                                               to={`/courses/${course.id}`}
-                                              className="flex items-center gap-2 truncate font-medium text-slate-700 underline underline-offset-2 hover:text-primary"
+                                              className="flex items-center gap-2 truncate font-medium text-foreground underline underline-offset-2 hover:text-primary"
                                             >
-                                              {isCourseLocked ? <Lock className="h-3 w-3 text-slate-400" /> : null}
+                                              {isCourseLocked ? <Lock className="h-3 w-3 text-muted-foreground" /> : null}
                                               {course.code ?? course.name}
                                             </Link>
                                           </TooltipTrigger>
@@ -1341,7 +1360,7 @@ export default function AcademicYear() {
                                   })
                                 )}
                               </div>
-                              <div className="grid min-w-0 grid-cols-[1fr,60px,80px,80px] gap-2 border-t border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700">
+                              <div className="grid min-w-0 grid-cols-[1fr,60px,80px,80px] gap-2 border-t border-border bg-muted px-4 py-2 text-sm font-semibold text-foreground">
                                 <span>Semester total</span>
                                 <span className="text-right">{totalCredits.toFixed(1)}</span>
                                 <span className="text-right">{currentSemesterGpaDisplay}</span>
@@ -1359,10 +1378,10 @@ export default function AcademicYear() {
           );
         })}
 
-          <Card className="border-dashed border-slate-300 bg-white/70 shadow-sm">
+          <Card className="border-dashed border-border bg-card/70 shadow-sm">
             <CardContent className="p-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
-                <p className="text-sm font-semibold text-slate-700">Add a year</p>
+                <p className="text-sm font-semibold text-foreground">Add a year</p>
                 <p className="text-sm text-muted-foreground">Start a new academic year.</p>
               </div>
               <Button
@@ -1389,7 +1408,7 @@ export default function AcademicYear() {
         </div>
 
         {careerTargetActive && targetGpaMax !== null && targetGpaShortfall !== null ? (
-          <Card className="border-slate-200 bg-slate-50/60">
+          <Card className="border-border bg-muted/60">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Target GPA status</CardTitle>
             </CardHeader>
@@ -1397,7 +1416,7 @@ export default function AcademicYear() {
               <p className="text-sm text-muted-foreground">
                 You lost too many points to achieve your GPA.
               </p>
-              <div className="flex flex-wrap gap-4 text-sm font-semibold text-slate-700">
+              <div className="flex flex-wrap gap-4 text-sm font-semibold text-foreground">
                 <span>Max achievable GPA: {targetGpaMax.toFixed(2)}</span>
                 <span>Shortfall: {targetGpaShortfall.toFixed(2)}</span>
               </div>
@@ -1406,7 +1425,7 @@ export default function AcademicYear() {
         ) : null}
 
         {yearTargetLabelDisplay && yearTargetMax !== null && yearTargetShortfall !== null ? (
-          <Card className="border-slate-200 bg-slate-50/60">
+          <Card className="border-border bg-muted/60">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">{yearTargetLabelDisplay} GPA status</CardTitle>
             </CardHeader>
@@ -1414,7 +1433,7 @@ export default function AcademicYear() {
               <p className="text-sm text-muted-foreground">
                 You lost too many points to achieve your GPA.
               </p>
-              <div className="flex flex-wrap gap-4 text-sm font-semibold text-slate-700">
+              <div className="flex flex-wrap gap-4 text-sm font-semibold text-foreground">
                 <span>Max achievable GPA: {yearTargetMax.toFixed(2)}</span>
                 <span>Shortfall: {yearTargetShortfall.toFixed(2)}</span>
               </div>
@@ -1422,7 +1441,7 @@ export default function AcademicYear() {
           </Card>
         ) : null}
 
-        <Card className="border-slate-200 bg-white/80">
+        <Card className="border-border bg-card/80">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Snapshot</CardTitle>
           </CardHeader>
@@ -1431,14 +1450,14 @@ export default function AcademicYear() {
               <p className="text-xs uppercase tracking-wide text-muted-foreground">
                 <span className="rounded bg-[#265D80]/10 px-1 py-0.5">Credits tracked</span>
               </p>
-              <p className="text-2xl font-semibold text-slate-900">{totalCredits.toFixed(1)}</p>
+              <p className="text-2xl font-semibold text-foreground">{totalCredits.toFixed(1)}</p>
               <p className="text-xs text-muted-foreground">{years.length} years • {totalSemesters} semesters</p>
             </div>
             <div className="space-y-1">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">
                 <span className="rounded bg-[#265D80]/10 px-1 py-0.5">Active targets</span>
               </p>
-              <p className="text-2xl font-semibold text-slate-900">
+              <p className="text-2xl font-semibold text-foreground">
                 {careerTargetActive ? "Career" : activeYearTargets + activeSemesterTargets}
               </p>
               <p className="text-xs text-muted-foreground">
@@ -1453,7 +1472,7 @@ export default function AcademicYear() {
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">
                     <span className="rounded bg-[#265D80]/10 px-1 py-0.5">Points needed</span>
                   </p>
-                  <p className="text-2xl font-semibold text-slate-900">
+                  <p className="text-2xl font-semibold text-foreground">
                     {targetSlack.neededFromRemaining.toFixed(2)}
                   </p>
                   <p className="text-xs text-muted-foreground">to hit target GPA</p>
@@ -1462,7 +1481,7 @@ export default function AcademicYear() {
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">
                     <span className="rounded bg-[#265D80]/10 px-1 py-0.5">Required avg</span>
                   </p>
-                  <p className="text-2xl font-semibold text-slate-900">
+                  <p className="text-2xl font-semibold text-foreground">
                     {targetSlack.requiredAvgRemaining === null
                       ? "—"
                       : targetSlack.requiredAvgRemaining.toFixed(2)}
@@ -1475,7 +1494,7 @@ export default function AcademicYear() {
                   <p className="text-xs uppercase tracking-wide text-muted-foreground">
                     <span className="rounded bg-[#265D80]/10 px-1 py-0.5">Points you can still lose</span>
                   </p>
-                  <p className="text-2xl font-semibold text-slate-900">
+                  <p className="text-2xl font-semibold text-foreground">
                     {Math.max(0, targetSlack.slackPointsLeftToLose).toFixed(2)}
                   </p>
                   <p className="text-xs text-muted-foreground">
@@ -1490,7 +1509,7 @@ export default function AcademicYear() {
               </>
             ) : null}
             {careerTargetActive && targetGpaMax !== null && targetGpaShortfall !== null ? (
-              <div className="col-span-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              <div className="col-span-full rounded-lg border border-border bg-muted p-3 text-sm text-foreground">
                 Max achievable GPA: {targetGpaMax.toFixed(2)} • Shortfall: {targetGpaShortfall.toFixed(2)}
               </div>
             ) : null}

@@ -29,11 +29,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useToast } from "@/hooks/use-toast";
 import { useUserProfile, type UserTier } from "@/hooks/use-user-profile";
 import { http } from "@/lib/http";
 import { getProfileInitials, getProfilePhoto } from "@/lib/profile";
 import { GraduationCap, MoreVertical } from "lucide-react";
+import { useTheme } from "next-themes";
+import { setOnboardingProfileNameDone, setOnboardingProfilePhotoDone, setOnboardingThemeDone } from "@/lib/onboarding";
 
 const tabs = ["Profile", "Subscription"] as const;
 type Tab = (typeof tabs)[number];
@@ -42,6 +46,7 @@ export default function Profile() {
   const { toast } = useToast();
   const nav = useNavigate();
   const { profile, refresh, setProfile } = useUserProfile();
+  const { theme, setTheme } = useTheme();
   const [activeTab, setActiveTab] = useState<Tab>("Subscription");
   const [loadingTier, setLoadingTier] = useState(false);
   const [name, setName] = useState(localStorage.getItem("ayg_display_name") ?? "");
@@ -109,6 +114,8 @@ export default function Profile() {
     } else {
       localStorage.removeItem("ayg_profile_photo");
     }
+    if (trimmed) setOnboardingProfileNameDone();
+    if (editPhoto) setOnboardingProfilePhotoDone();
     setNameDialogOpen(false);
     toast({ title: "Name updated", description: "Your profile name has been saved." });
   };
@@ -133,8 +140,8 @@ export default function Profile() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-sky-50">
-      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200">
+    <div className="min-h-screen bg-background">
+      <header className="sticky top-0 z-40 bg-background/90 backdrop-blur border-b border-border">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
           <Link to="/academic-year" className="flex items-center gap-2">
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center">
@@ -150,7 +157,7 @@ export default function Profile() {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="grid gap-6 md:grid-cols-[220px,1fr]">
-          <Card className="h-fit border-slate-200">
+          <Card className="h-fit border-border">
             <CardHeader className="pb-2">
               <CardTitle className="text-base">Profile</CardTitle>
             </CardHeader>
@@ -169,7 +176,7 @@ export default function Profile() {
           </Card>
 
           {activeTab === "Profile" ? (
-            <Card className="border-slate-200">
+            <Card className="border-border">
               <CardHeader className="pb-2 flex flex-row items-center justify-between">
                 <CardTitle className="text-base">Account details</CardTitle>
                 <DropdownMenu>
@@ -184,7 +191,7 @@ export default function Profile() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </CardHeader>
-              <CardContent className="space-y-2 text-sm text-slate-700">
+              <CardContent className="space-y-4 text-sm text-foreground">
                 <div className="flex items-center gap-3">
                   {profilePhoto ? (
                     <img
@@ -210,10 +217,35 @@ export default function Profile() {
                   <p className="text-xs text-muted-foreground">Current plan</p>
                   <Badge variant="secondary">{tier}</Badge>
                 </div>
+                <Separator />
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Appearance</p>
+                    <p className="text-sm font-semibold text-foreground">Choose a theme</p>
+                  </div>
+                  <RadioGroup
+                    value={theme ?? "system"}
+                    onValueChange={(value) => {
+                      setTheme(value);
+                      setOnboardingThemeDone();
+                    }}
+                    className="grid gap-3 sm:grid-cols-3"
+                  >
+                    {["light", "dark", "system"].map((value) => (
+                      <label
+                        key={value}
+                        className="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition hover:border-border/80"
+                      >
+                        <RadioGroupItem value={value} />
+                        {value === "light" ? "Light" : value === "dark" ? "Dark" : "System"}
+                      </label>
+                    ))}
+                  </RadioGroup>
+                </div>
               </CardContent>
             </Card>
           ) : (
-            <Card className="border-slate-200">
+            <Card className="border-border">
               <CardHeader className="pb-2">
                 <CardTitle className="text-base">Subscription</CardTitle>
               </CardHeader>
@@ -234,7 +266,7 @@ export default function Profile() {
                 </div>
 
                 {stripeReady ? (
-                  <div className="rounded-lg border border-slate-200 p-4">
+                  <div className="rounded-lg border border-border p-4">
                     <stripe-pricing-table
                       pricing-table-id={pricingTableId}
                       publishable-key={publishableKey}
@@ -245,11 +277,11 @@ export default function Profile() {
                 ) : (
                   <>
                     <div className="grid gap-4 md:grid-cols-2">
-                      <Card className={`border ${tier === "FREE" ? "border-primary" : "border-slate-200"}`}>
+                      <Card className={`border ${tier === "FREE" ? "border-primary" : "border-border"}`}>
                         <CardHeader className="pb-2">
                           <CardTitle className="text-sm">Free</CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-3 text-sm text-slate-700">
+                        <CardContent className="space-y-3 text-sm text-foreground">
                           <ul className="list-disc list-inside text-xs text-muted-foreground">
                             <li>1 year, 1 semester, 3 courses</li>
                             <li>Assignments fully available</li>
@@ -266,11 +298,11 @@ export default function Profile() {
                         </CardContent>
                       </Card>
 
-                      <Card className={`border ${tier === "PAID" ? "border-primary" : "border-slate-200"}`}>
+                      <Card className={`border ${tier === "PAID" ? "border-primary" : "border-border"}`}>
                         <CardHeader className="pb-2">
                           <CardTitle className="text-sm">Paid</CardTitle>
                         </CardHeader>
-                        <CardContent className="space-y-3 text-sm text-slate-700">
+                        <CardContent className="space-y-3 text-sm text-foreground">
                           <ul className="list-disc list-inside text-xs text-muted-foreground">
                             <li>Unlimited years, semesters, and courses</li>
                             <li>All create, edit, delete actions</li>
