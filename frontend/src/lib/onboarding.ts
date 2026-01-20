@@ -3,6 +3,7 @@ const STORAGE_KEYS = {
   semesterDone: "ayg_onboarding_semester_done",
   courseDone: "ayg_onboarding_course_done",
   assignmentCount: "ayg_onboarding_assignment_count",
+  helpDone: "ayg_onboarding_help_done",
 } as const;
 
 export type OnboardingStatus = {
@@ -10,6 +11,7 @@ export type OnboardingStatus = {
   semesterDone: boolean;
   courseDone: boolean;
   assignmentCount: number;
+  helpDone: boolean;
 };
 
 const readFlag = (key: string) => {
@@ -43,6 +45,7 @@ export const getOnboardingStatus = (): OnboardingStatus => ({
   semesterDone: readFlag(STORAGE_KEYS.semesterDone),
   courseDone: readFlag(STORAGE_KEYS.courseDone),
   assignmentCount: readCount(STORAGE_KEYS.assignmentCount),
+  helpDone: readFlag(STORAGE_KEYS.helpDone),
 });
 
 export const setOnboardingYearDone = () => {
@@ -64,6 +67,11 @@ export const setOnboardingAssignmentCount = (count: number) => {
   const current = readCount(STORAGE_KEYS.assignmentCount);
   if (count <= current) return;
   writeCount(STORAGE_KEYS.assignmentCount, count);
+  notifyOnboardingUpdate();
+};
+
+export const setOnboardingHelpDone = () => {
+  writeFlag(STORAGE_KEYS.helpDone, true);
   notifyOnboardingUpdate();
 };
 

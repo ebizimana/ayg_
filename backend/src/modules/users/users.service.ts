@@ -53,4 +53,11 @@ export class UsersService {
       select: { id: true, email: true, tier: true },
     });
   }
+
+  async deleteAccount(userId: string) {
+    return this.prisma.user.delete({
+      where: { id: userId },
+      select: { id: true },
+    });
+  }
 }

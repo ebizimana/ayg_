@@ -29,6 +29,7 @@ import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import { InfoPopover } from "@/components/InfoPopover";
 import { useToast } from "@/hooks/use-toast";
 import { getStoredTier, useUserProfile, type UserTier } from "@/hooks/use-user-profile";
+import { getDisplayName, getProfileInitials, getProfilePhoto } from "@/lib/profile";
 import { http } from "@/lib/http";
 import {
   markOnboardingFromCounts,
@@ -701,6 +702,9 @@ export default function AcademicYear() {
   const yearLimit = limits.years ?? freeLimits.years;
   const semesterLimit = limits.semesters ?? freeLimits.semesters;
   const courseLimit = limits.courses ?? freeLimits.courses;
+  const displayName = getDisplayName();
+  const profilePhoto = getProfilePhoto();
+  const initials = getProfileInitials(displayName);
 
   const sortedYearsByStart = useMemo(
     () => [...years].sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime()),
@@ -793,10 +797,18 @@ export default function AcademicYear() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="gap-2">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                    <User className="h-4 w-4 text-primary" />
-                  </div>
-                  <span>{localStorage.getItem("ayg_email") ?? "Profile"}</span>
+                  {profilePhoto ? (
+                    <img
+                      src={profilePhoto}
+                      alt={displayName}
+                      className="h-8 w-8 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
+                      {initials}
+                    </div>
+                  )}
+                  <span>{displayName}</span>
                   <ChevronDown className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -806,10 +818,6 @@ export default function AcademicYear() {
                 <DropdownMenuItem onClick={() => nav("/profile")}>
                   <User className="h-4 w-4 mr-2" />
                   Profile
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Settings className="h-4 w-4 mr-2" />
-                  Settings
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={signOut}>
@@ -835,10 +843,6 @@ export default function AcademicYear() {
           <Button variant="ghost" className="w-full justify-start gap-2" onClick={() => nav("/profile")}>
             <User className="h-4 w-4" />
             Profile
-          </Button>
-          <Button variant="ghost" className="w-full justify-start gap-2">
-            <Settings className="h-4 w-4" />
-            Settings
           </Button>
           <Button variant="ghost" className="w-full justify-start gap-2" onClick={signOut}>
             <LogOut className="h-4 w-4" />
@@ -935,21 +939,17 @@ export default function AcademicYear() {
               ) : null}
             </CardContent>
           </Card>
-          <Card className="border-slate-200">
+          <Card className="border-slate-200 opacity-70">
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardTitle className="text-base">Field of study</CardTitle>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <MoreVertical className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem>Edit</DropdownMenuItem>
-                  <DropdownMenuItem>Add major/minor</DropdownMenuItem>
-                  <DropdownMenuItem>Configure</DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base">Field of study</CardTitle>
+                <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                  Coming Soon
+                </span>
+              </div>
+              <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
+                <MoreVertical className="h-4 w-4" />
+              </Button>
             </CardHeader>
             <CardContent>
               <Label htmlFor="field-of-study" className="text-xs text-muted-foreground">
@@ -964,6 +964,7 @@ export default function AcademicYear() {
                   localStorage.setItem("ayg_field_of_study", e.target.value);
                 }}
                 className="mt-2"
+                disabled
               />
             </CardContent>
           </Card>

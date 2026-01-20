@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { getStoredTier, useUserProfile, type UserTier } from "@/hooks/use-user-profile";
+import { getDisplayName, getProfileInitials, getProfilePhoto } from "@/lib/profile";
 import { http } from "@/lib/http";
 import { markOnboardingFromCounts, setOnboardingCourseDone, setOnboardingSemesterDone } from "@/lib/onboarding";
 
@@ -148,6 +149,9 @@ export default function Semester() {
   const courseLimit = limits.courses ?? freeLimits.courses;
   const totalCoursesUsed = profile?.usage.courses ?? courses.length;
   const totalSemestersUsed = profile?.usage.semesters ?? semesters.length;
+  const displayName = getDisplayName();
+  const profilePhoto = getProfilePhoto();
+  const initials = getProfileInitials(displayName);
 
   const yearsFromSemesters = useMemo(() => {
     const map = new Map<string, Semester["year"]>();
@@ -1059,10 +1063,18 @@ export default function Semester() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="gap-2">
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                      <User className="h-4 w-4 text-primary" />
-                    </div>
-                    <span>{localStorage.getItem("ayg_email") ?? "Profile"}</span>
+                    {profilePhoto ? (
+                      <img
+                        src={profilePhoto}
+                        alt={displayName}
+                        className="h-8 w-8 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
+                        {initials}
+                      </div>
+                    )}
+                    <span>{displayName}</span>
                     <ChevronDown className="h-4 w-4" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -1347,16 +1359,16 @@ export default function Semester() {
                 </Button>
                 <Button
                   variant="outline"
-                  className="w-full justify-start gap-2"
-                  onClick={() =>
-                    toast({
-                      title: "Coming soon",
-                      description: "Syllabus import is on the way.",
-                    })
-                  }
+                  className="w-full justify-start gap-2 opacity-70"
+                  disabled
                 >
                   <BookOpen className="h-4 w-4 text-primary" />
-                  Import syllabus
+                  <span className="flex items-center gap-2">
+                    Import syllabus
+                    <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                      Coming Soon
+                    </span>
+                  </span>
                 </Button>
                 <Button
                   variant="outline"

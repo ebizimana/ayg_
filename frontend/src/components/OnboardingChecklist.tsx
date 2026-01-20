@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { X, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
-import { getOnboardingStatus } from "@/lib/onboarding";
+import { getOnboardingStatus, setOnboardingHelpDone } from "@/lib/onboarding";
 
 const ASSIGNMENT_TARGET = 5;
 
@@ -22,7 +23,12 @@ export function OnboardingChecklist() {
   }, []);
 
   const assignmentsDone = status.assignmentCount >= ASSIGNMENT_TARGET;
-  const allDone = status.yearDone && status.semesterDone && status.courseDone && assignmentsDone;
+  const allDone =
+    status.yearDone &&
+    status.semesterDone &&
+    status.courseDone &&
+    assignmentsDone &&
+    status.helpDone;
 
   const items = useMemo(
     () => [
@@ -34,8 +40,20 @@ export function OnboardingChecklist() {
         done: assignmentsDone,
         detail: `${Math.min(status.assignmentCount, ASSIGNMENT_TARGET)}/${ASSIGNMENT_TARGET}`,
       },
+      {
+        label: "Open the help guide",
+        done: status.helpDone,
+        actionLabel: "Open",
+      },
     ],
-    [assignmentsDone, status.assignmentCount, status.courseDone, status.semesterDone, status.yearDone],
+    [
+      assignmentsDone,
+      status.assignmentCount,
+      status.courseDone,
+      status.helpDone,
+      status.semesterDone,
+      status.yearDone,
+    ],
   );
 
   if (allDone || dismissed) return null;
@@ -73,7 +91,18 @@ export function OnboardingChecklist() {
               <span className={item.done ? "text-slate-400 line-through" : "text-slate-700"}>
                 {item.label}
               </span>
-              {item.detail ? (
+              {item.actionLabel ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-2 text-xs"
+                  asChild
+                >
+                  <Link to="/docs" onClick={() => setOnboardingHelpDone()}>
+                    {item.actionLabel}
+                  </Link>
+                </Button>
+              ) : item.detail ? (
                 <span className="text-xs text-slate-500">{item.detail}</span>
               ) : null}
             </div>

@@ -8,6 +8,8 @@ import { CategoryModal, type CategoryFormData } from "@/components/modals";
 import { UpgradeDialog } from "@/components/UpgradeDialog";
 import { useToast } from "@/hooks/use-toast";
 import { getStoredTier, useUserProfile, type UserTier } from "@/hooks/use-user-profile";
+import { getDisplayName, getProfileInitials, getProfilePhoto } from "@/lib/profile";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { http } from "@/lib/http";
 import { HelpCircle, ChevronDown, GraduationCap, GripVertical, LogOut, Plus, Settings, User, Lock } from "lucide-react";
 
@@ -65,6 +67,9 @@ export default function CourseCategories() {
 
   const tier: UserTier | null = profile?.tier ?? getStoredTier();
   const isFree = tier === "FREE";
+  const displayName = getDisplayName();
+  const profilePhoto = getProfilePhoto();
+  const initials = getProfileInitials(displayName);
 
   const openUpgradeDialog = (title: string, description: string) => {
     setUpgradeDialog({ title, description });
@@ -402,10 +407,18 @@ export default function CourseCategories() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="gap-2">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                    <User className="h-4 w-4 text-primary" />
-                  </div>
-                  <span>{localStorage.getItem("ayg_email") ?? "Profile"}</span>
+                  {profilePhoto ? (
+                    <img
+                      src={profilePhoto}
+                      alt={displayName}
+                      className="h-8 w-8 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
+                      {initials}
+                    </div>
+                  )}
+                  <span>{displayName}</span>
                   <ChevronDown className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -467,24 +480,74 @@ export default function CourseCategories() {
             </Button>
           </CardHeader>
           <CardContent className="overflow-hidden">
-            <div className="grid grid-cols-[48px_1fr_100px_120px_140px_120px_120px] bg-slate-50 text-sm font-semibold text-slate-600 rounded-t-lg border border-slate-200">
+            <TooltipProvider>
+              <div className="grid grid-cols-[48px_1fr_100px_120px_140px_120px_120px] bg-slate-50 text-sm font-semibold text-slate-600 rounded-t-lg border border-slate-200">
               <div className="px-4 py-3 flex items-center">
                 <span className="sr-only">Drag</span>
               </div>
               <button className="px-4 py-3 text-left flex items-center gap-1 hover:text-primary" onClick={() => toggleSort("name")}>
-                Name {sortBy === "name" && <ChevronDown className={`h-4 w-4 ${sortDir === "asc" ? "-rotate-180" : ""}`} />}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="cursor-help">Name</span>
+                  </TooltipTrigger>
+                  <TooltipContent>The name of the category.</TooltipContent>
+                </Tooltip>
+                {sortBy === "name" && <ChevronDown className={`h-4 w-4 ${sortDir === "asc" ? "-rotate-180" : ""}`} />}
               </button>
               <button className="px-4 py-3 text-left flex items-center gap-1 hover:text-primary" onClick={() => toggleSort("weight")}>
-                {isPointsBased ? "Weight (ignored)" : "Weight"}{" "}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="cursor-help">
+                      {isPointsBased ? "Weight (ignored)" : "Weight"}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Percentage weight of this category in the final grade. Ignored for point-based courses.
+                  </TooltipContent>
+                </Tooltip>
                 {sortBy === "weight" && <ChevronDown className={`h-4 w-4 ${sortDir === "asc" ? "-rotate-180" : ""}`} />}
               </button>
-              <div className="px-4 py-3 text-right">Contribution</div>
-              <div className="px-4 py-3 text-right">Category %</div>
-              <div className="px-4 py-3 text-right">Graded</div>
+              <div className="px-4 py-3 text-right flex items-center justify-end gap-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="cursor-help">Contribution</span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    This category’s share of the overall course grade based on its weight and current scores.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="px-4 py-3 text-right flex items-center justify-end gap-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="cursor-help">Category %</span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Current average for this category based on graded assignments.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <div className="px-4 py-3 text-right flex items-center justify-end gap-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="cursor-help">Graded</span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Number of graded assignments in this category.
+                  </TooltipContent>
+                </Tooltip>
+              </div>
               <button className="px-4 py-3 text-right flex items-center gap-1 justify-end hover:text-primary" onClick={() => toggleSort("count")}>
-                Total {sortBy === "count" && <ChevronDown className={`h-4 w-4 ${sortDir === "asc" ? "-rotate-180" : ""}`} />}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="cursor-help">Total</span>
+                  </TooltipTrigger>
+                  <TooltipContent>Total assignments in this category.</TooltipContent>
+                </Tooltip>
+                {sortBy === "count" && <ChevronDown className={`h-4 w-4 ${sortDir === "asc" ? "-rotate-180" : ""}`} />}
               </button>
-            </div>
+              </div>
+            </TooltipProvider>
             <div className="divide-y divide-slate-200 border border-t-0 border-slate-200 rounded-b-lg">
               {sortedCategories.map((cat) => (
                 <div

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Patch, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Patch, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthUser } from '../../common/decorators/current-user.decorator';
@@ -18,5 +18,11 @@ export class UsersController {
   @Patch('me/tier')
   async updateTier(@CurrentUser() user: AuthUser, @Body() dto: UpdateTierDto) {
     return this.usersService.updateTier(user.userId, dto.tier);
+  }
+
+  @Delete('me')
+  async deleteAccount(@CurrentUser() user: AuthUser) {
+    await this.usersService.deleteAccount(user.userId);
+    return { success: true };
   }
 }

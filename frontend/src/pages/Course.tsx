@@ -35,6 +35,7 @@ import { UpgradeDialog } from "@/components/UpgradeDialog";
 import { OnboardingChecklist } from "@/components/OnboardingChecklist";
 import { useToast } from "@/hooks/use-toast";
 import { getStoredTier, useUserProfile, type UserTier } from "@/hooks/use-user-profile";
+import { getDisplayName, getProfileInitials, getProfilePhoto } from "@/lib/profile";
 import { http } from "@/lib/http";
 import { incrementOnboardingAssignmentCount, setOnboardingAssignmentCount } from "@/lib/onboarding";
 import {
@@ -194,6 +195,9 @@ export default function CoursePage() {
 
   const tier: UserTier | null = profile?.tier ?? getStoredTier();
   const isFree = tier === "FREE";
+  const displayName = getDisplayName();
+  const profilePhoto = getProfilePhoto();
+  const initials = getProfileInitials(displayName);
 
   const openUpgradeDialog = (title: string, description: string) => {
     setUpgradeDialog({ title, description });
@@ -998,10 +1002,18 @@ export default function CoursePage() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="gap-2">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
-                    <User className="h-4 w-4 text-primary" />
-                  </div>
-                  <span>{localStorage.getItem("ayg_email") ?? "Profile"}</span>
+                  {profilePhoto ? (
+                    <img
+                      src={profilePhoto}
+                      alt={displayName}
+                      className="h-8 w-8 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
+                      {initials}
+                    </div>
+                  )}
+                  <span>{displayName}</span>
                   <ChevronDown className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
